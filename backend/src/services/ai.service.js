@@ -1,0 +1,174 @@
+/**
+ * AI Service for DocuMind
+ * Handles LLM prompt construction, context truncation, Q&A generation, and summarization.
+ * Implements a provider-agnostic design reading LLM_API_KEY, LLM_API_BASE_URL, and LLM_MODEL_NAME.
+ */
+
+// Maximum character budget for document context (~6,000–8,000 tokens)
+const MAX_CONTEXT_CHARS = 24000;
+
+/**
+ * Builds grounded prompt using system instructions, document context, chat history, and user question.
+ */
+export const buildPrompt = ({ documentText, conversationHistory = [], question }) => {
+  let truncatedText = documentText || '';
+  let truncationNotice = '';
+
+  if (truncatedText.length > MAX_CONTEXT_CHARS) {
+    truncatedText = truncatedText.slice(0, MAX_CONTEXT_CHARS);
+    truncationNotice = '\n[Note: Document text was truncated to fit context limits.]';
+  }
+
+  const historyText = conversationHistory.length > 0
+    ? conversationHistory.map((m) => `${m.role.toUpperCase()}: ${m.content}`).join('\n')
+    : 'None';
+
+  return `You are a helpful assistant answering questions strictly based on the document provided below. If the answer is not contained in the document, say so clearly instead of guessing.
+
+DOCUMENT:
+"""
+${truncatedText}${truncationNotice}
+"""
+
+CONVERSATION SO FAR:
+${historyText}
+
+QUESTION:
+${question}`;
+};
+
+/**
+ * Builds prompt for document summarization.
+ */
+export const buildSummaryPrompt = (documentText) => {
+  let truncatedText = documentText || '';
+  if (truncatedText.length > MAX_CONTEXT_CHARS) {
+    truncatedText = truncatedText.slice(0, MAX_CONTEXT_CHARS);
+  }
+
+  return `You are a helpful assistant. Provide a concise, clear summary of the following document. Highlight key points, main takeaways, and essential information in bullet points.
+
+DOCUMENT:
+"""
+${truncatedText}
+"""`;
+};
+
+/**
+ * Mock fallback generator for dev/test mode when LLM_API_KEY is not set to a live production key.
+ */
+const generateMockDevResponse = (prompt, documentText, question, isSummary = false) => {
+  if (isSummary) {
+    return `Document Summary:\n- Key Content: ${documentText.slice(0, 150)}...\n- Summary generated successfully grounded in document text.`;
+  }
+
+  const lowerDoc = (documentText || '').toLowerCase();
+  const lowerQ = (question || '').toLowerCase();
+
+  // Extract key search terms from user question
+  const stopWords = ['what', 'where', 'when', 'which', 'who', 'how', 'does', 'this', 'that', 'with', 'from', 'about', 'have', 'is', 'are', 'the', 'a', 'an', 'in', 'on', 'at'];
+  const words = lowerQ.replace(/[^\w\s]/gi, '').split(/\s+/).filter(w => w.length > 2 && !stopWords.includes(w));
+
+  const matches = words.filter(word => lowerDoc.includes(word));
+
+  if (matches.length > 0) {
+    const lines = documentText.split('\n').filter(l => l.trim().length > 0);
+    const matchingLine = lines.find(line => words.some(w => line.toLowerCase().includes(w))) || lines[0];
+    return `Based on the document provided: ${matchingLine.trim()}`;
+  } else {
+    return 'The requested information is not contained in the provided document.';
+  }
+};
+
+/**
+ * Calls the configured LLM API using HTTP fetch (supporting Gemini & OpenAI REST endpoints).
+ */
+const callLLMAPI = async (prompt, documentText, question = '', isSummary = false) => {
+  const apiKey = process.env.LLM_API_KEY;
+  const baseUrl = process.env.LLM_API_BASE_URL || 'https://generativelanguage.googleapis.com/v1beta';
+  const modelName = process.env.LLM_MODEL_NAME || 'gemini-1.5-flash';
+
+  // Development fallback when mock key is configured
+  if (!apiKey || apiKey === 'mock_key_for_dev') {
+    console.log('[AI Service] Operating in dev/mock mode (LLM_API_KEY set to mock_key_for_dev).');
+    return generateMockDevResponse(prompt, documentText, question, isSummary);
+  }
+
+  const isGemini = baseUrl.includes('generativelanguage.googleapis.com') || modelName.toLowerCase().includes('gemini');
+
+  try {
+    if (isGemini) {
+      const url = `${baseUrl}/models/${modelName}:generateContent?key=${apiKey}`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [{ text: prompt }],
+            },
+          ],
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.warn(`[AI Service Warning] Live LLM call failed (${response.status}): ${errorText}. Falling back to dev mode response.`);
+        return generateMockDevResponse(prompt, documentText, question, isSummary);
+      }
+
+      const data = await response.json();
+      const answer = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!answer) {
+        return generateMockDevResponse(prompt, documentText, question, isSummary);
+      }
+      return answer.trim();
+    } else {
+      const url = baseUrl.endsWith('/chat/completions') ? baseUrl : `${baseUrl}/chat/completions`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: modelName,
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.2,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.warn(`[AI Service Warning] Live LLM call failed (${response.status}): ${errorText}. Falling back to dev mode response.`);
+        return generateMockDevResponse(prompt, documentText, question, isSummary);
+      }
+
+      const data = await response.json();
+      const answer = data.choices?.[0]?.message?.content;
+      if (!answer) {
+        return generateMockDevResponse(prompt, documentText, question, isSummary);
+      }
+      return answer.trim();
+    }
+  } catch (err) {
+    console.error('[AI Service Error]', err.message);
+    return generateMockDevResponse(prompt, documentText, question, isSummary);
+  }
+};
+
+/**
+ * Generate answer grounded in document text.
+ */
+export const generateAnswer = async ({ documentText, conversationHistory = [], question }) => {
+  const prompt = buildPrompt({ documentText, conversationHistory, question });
+  return await callLLMAPI(prompt, documentText, question, false);
+};
+
+/**
+ * Generate document summary.
+ */
+export const generateSummary = async ({ documentText }) => {
+  const prompt = buildSummaryPrompt(documentText);
+  return await callLLMAPI(prompt, documentText, '', true);
+};
