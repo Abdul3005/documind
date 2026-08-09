@@ -55,9 +55,9 @@ ${truncatedText}
 };
 
 /**
- * Mock fallback generator for dev/test mode when LLM_API_KEY is not set to a live production key.
+ * Mock fallback generator for dev/test mode when LLM_API_KEY is set to 'mock_key_for_dev'.
  */
-const generateMockDevResponse = (prompt, documentText, question, isSummary = false) => {
+const generateMockDevResponse = (documentText, question, isSummary = false) => {
   if (isSummary) {
     return `Document Summary:\n- Key Content: ${documentText.slice(0, 150)}...\n- Summary generated successfully grounded in document text.`;
   }
@@ -65,7 +65,6 @@ const generateMockDevResponse = (prompt, documentText, question, isSummary = fal
   const lowerDoc = (documentText || '').toLowerCase();
   const lowerQ = (question || '').toLowerCase();
 
-  // Extract key search terms from user question
   const stopWords = ['what', 'where', 'when', 'which', 'who', 'how', 'does', 'this', 'that', 'with', 'from', 'about', 'have', 'is', 'are', 'the', 'a', 'an', 'in', 'on', 'at'];
   const words = lowerQ.replace(/[^\w\s]/gi, '').split(/\s+/).filter(w => w.length > 2 && !stopWords.includes(w));
 
@@ -86,74 +85,73 @@ const generateMockDevResponse = (prompt, documentText, question, isSummary = fal
 const callLLMAPI = async (prompt, documentText, question = '', isSummary = false) => {
   const apiKey = process.env.LLM_API_KEY;
   const baseUrl = process.env.LLM_API_BASE_URL || 'https://generativelanguage.googleapis.com/v1beta';
-  const modelName = process.env.LLM_MODEL_NAME || 'gemini-1.5-flash';
+  const modelName = process.env.LLM_MODEL_NAME || 'gemini-flash-latest';
 
-  // Development fallback when mock key is configured
+  // Development fallback only when explicit mock key is configured
   if (!apiKey || apiKey === 'mock_key_for_dev') {
     console.log('[AI Service] Operating in dev/mock mode (LLM_API_KEY set to mock_key_for_dev).');
-    return generateMockDevResponse(prompt, documentText, question, isSummary);
+    return generateMockDevResponse(documentText, question, isSummary);
   }
 
-  const isGemini = baseUrl.includes('generativelanguage.googleapis.com') || modelName.toLowerCase().includes('gemini');
+  const isGemini = baseUrl.includes('generativelanguage.googleapis.com') || modelName.toLowerCase().includes('gemini') || modelName.toLowerCase().includes('gemma');
 
-  try {
-    if (isGemini) {
-      const url = `${baseUrl}/models/${modelName}:generateContent?key=${apiKey}`;
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [{ text: prompt }],
-            },
-          ],
-        }),
-      });
+  if (isGemini) {
+    const url = `${baseUrl}/models/${modelName}:generateContent?key=${apiKey}`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [{ text: prompt }],
+          },
+        ],
+      }),
+    });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.warn(`[AI Service Warning] Live LLM call failed (${response.status}): ${errorText}. Falling back to dev mode response.`);
-        return generateMockDevResponse(prompt, documentText, question, isSummary);
-      }
-
-      const data = await response.json();
-      const answer = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!answer) {
-        return generateMockDevResponse(prompt, documentText, question, isSummary);
-      }
-      return answer.trim();
-    } else {
-      const url = baseUrl.endsWith('/chat/completions') ? baseUrl : `${baseUrl}/chat/completions`;
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: modelName,
-          messages: [{ role: 'user', content: prompt }],
-          temperature: 0.2,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.warn(`[AI Service Warning] Live LLM call failed (${response.status}): ${errorText}. Falling back to dev mode response.`);
-        return generateMockDevResponse(prompt, documentText, question, isSummary);
-      }
-
-      const data = await response.json();
-      const answer = data.choices?.[0]?.message?.content;
-      if (!answer) {
-        return generateMockDevResponse(prompt, documentText, question, isSummary);
-      }
-      return answer.trim();
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[AI Service Error] Live LLM call failed (${response.status}): ${errorText}`);
+      const err = new Error(`LLM API Call Failed (${response.status}): ${errorText}`);
+      err.statusCode = response.status === 429 ? 429 : 502;
+      throw err;
     }
-  } catch (err) {
-    console.error('[AI Service Error]', err.message);
-    return generateMockDevResponse(prompt, documentText, question, isSummary);
+
+    const data = await response.json();
+    const answer = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!answer) {
+      throw new Error('No valid content generated by LLM provider.');
+    }
+    return answer.trim();
+  } else {
+    const url = baseUrl.endsWith('/chat/completions') ? baseUrl : `${baseUrl}/chat/completions`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: modelName,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.2,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[AI Service Error] Live LLM call failed (${response.status}): ${errorText}`);
+      const err = new Error(`LLM API Call Failed (${response.status}): ${errorText}`);
+      err.statusCode = response.status === 429 ? 429 : 502;
+      throw err;
+    }
+
+    const data = await response.json();
+    const answer = data.choices?.[0]?.message?.content;
+    if (!answer) {
+      throw new Error('No valid content generated by LLM provider.');
+    }
+    return answer.trim();
   }
 };
 
