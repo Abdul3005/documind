@@ -13,6 +13,9 @@ backend/.env
 uploads/
 backend/uploads/
 
+# OCR language models
+*.traineddata
+
 # Production builds / Output
 dist/
 frontend/dist/
