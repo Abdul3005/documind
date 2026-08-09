@@ -1,9 +1,10 @@
 import path from 'path';
 import fs from 'fs';
 import Document from '../models/Document.js';
+import { extractText } from './ocr.service.js';
 
 /**
- * Service to manage Document operations
+ * Service to process document upload, run OCR/PDF text extraction, and manage Document records.
  */
 export const createDocumentRecord = async (file) => {
   if (!file) {
@@ -15,22 +16,49 @@ export const createDocumentRecord = async (file) => {
   const ext = path.extname(file.originalname).toLowerCase();
   const fileType = ext === '.pdf' ? 'pdf' : 'image';
 
-  // Create Document record in MongoDB
-  const document = await Document.create({
+  // 1. Create Document record in MongoDB with status 'processing'
+  let document = await Document.create({
     filename: file.originalname,
     fileType,
-    extractedText: 'Initial upload complete. Text extraction pending Phase 5 integration.',
-    status: 'ready',
+    extractedText: 'Processing document text...',
+    status: 'processing',
   });
 
-  // Clean up uploaded temporary file from disk if extraction is complete or not needed on disk
-  if (fs.existsSync(file.path)) {
-    fs.unlink(file.path, (err) => {
-      if (err) console.error(`[Upload Cleanup Error] Failed to delete temp file ${file.path}:`, err);
-    });
-  }
+  try {
+    // 2. Perform PDF parsing or Image OCR extraction from file on disk
+    console.log(`[Document Service] Extracting text for document ${document._id} (${file.originalname})...`);
+    const extractedContent = await extractText(file.path, fileType);
 
-  return document;
+    // 3. Update document record with extracted text and status 'ready'
+    document.extractedText = extractedContent;
+    document.status = 'ready';
+    await document.save();
+
+    console.log(`[Document Service] Extraction complete for document ${document._id}. Status set to ready.`);
+    return document;
+  } catch (extractionError) {
+    console.error(`[Document Service Error] Extraction failed for document ${document._id}:`, extractionError.message);
+    
+    // Mark status as failed in database
+    document.status = 'failed';
+    document.extractedText = `Extraction failed: ${extractionError.message}`;
+    await document.save();
+
+    const error = new Error(`Failed to extract text from document: ${extractionError.message}`);
+    error.statusCode = 422;
+    throw error;
+  } finally {
+    // 4. Delete temporary uploaded file from disk AFTER extraction completes
+    if (fs.existsSync(file.path)) {
+      fs.unlink(file.path, (err) => {
+        if (err) {
+          console.error(`[File Cleanup Error] Failed to delete temp file ${file.path}:`, err);
+        } else {
+          console.log(`[File Cleanup] Temp file deleted successfully: ${file.path}`);
+        }
+      });
+    }
+  }
 };
 
 export const getAllDocuments = async () => {
