@@ -2,6 +2,11 @@
 
 DocuMind is a production-ready, full-stack MERN application (MongoDB, Express, React, Node.js) with OCR text extraction and LLM integration. It allows users to upload PDF contracts or image receipts, extract text via OCR, generate structured AI summaries, and ask grounded questions in real time.
 
+### 🌐 Live Deployment Links
+- **Frontend App**: [https://documind-one-sigma.vercel.app](https://documind-one-sigma.vercel.app)
+- **Backend API**: [https://documind-backend-pbbq.onrender.com](https://documind-backend-pbbq.onrender.com)
+
+
 ---
 
 ## 🌟 Key Features
