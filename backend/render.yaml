@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: documind-backend
+    env: node
+    region: oregon
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: MONGODB_URI
+        sync: false
+      - key: LLM_API_KEY
+        sync: false
+      - key: LLM_API_BASE_URL
+        value: https://generativelanguage.googleapis.com/v1beta
+      - key: LLM_MODEL_NAME
+        value: gemini-flash-latest
