@@ -2,9 +2,10 @@ import Document from '../models/Document.js';
 import Message from '../models/Message.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { generateAnswer, generateSummary } from '../services/ai.service.js';
+import { retrieveRelevantChunks } from '../services/retrieval.service.js';
 
 /**
- * @desc    Send question to document, get AI answer & store in chat history
+ * @desc    Send question to document, execute RAG vector search, get AI answer & store in chat history
  * @route   POST /api/documents/:id/messages
  * @access  Private
  */
@@ -36,14 +37,23 @@ export const sendMessage = asyncHandler(async (req, res) => {
   // Sort chronologically for prompt builder
   const conversationHistory = previousMessages.reverse();
 
-  // 3. Generate grounded AI response
+  // 3. Vector search / RAG retrieval of Top-K relevant chunks scoped to documentId and userId
+  const retrievedChunks = await retrieveRelevantChunks({
+    documentId: id,
+    userId: req.userId,
+    question: content.trim(),
+    topK: 3,
+  });
+
+  // 4. Generate grounded AI response using retrieved chunks context
   const assistantResponse = await generateAnswer({
+    retrievedChunks,
     documentText: document.extractedText,
     conversationHistory,
     question: content.trim(),
   });
 
-  // 4. Save User Message with userId
+  // 5. Save User Message with userId
   const userMessage = await Message.create({
     documentId: id,
     userId: req.userId,
@@ -51,13 +61,19 @@ export const sendMessage = asyncHandler(async (req, res) => {
     content: content.trim(),
   });
 
-  // 5. Save Assistant Message with userId
+  // 6. Save Assistant Message with userId
   const assistantMessage = await Message.create({
     documentId: id,
     userId: req.userId,
     role: 'assistant',
     content: assistantResponse,
   });
+
+  // Format source citation metadata
+  const sources = retrievedChunks.map((c) => ({
+    chunkIndex: c.chunkIndex,
+    similarity: c.similarity,
+  }));
 
   res.status(201).json({
     success: true,
@@ -71,6 +87,7 @@ export const sendMessage = asyncHandler(async (req, res) => {
       id: assistantMessage._id,
       role: assistantMessage.role,
       content: assistantMessage.content,
+      sources,
       createdAt: assistantMessage.createdAt,
     },
   });
@@ -97,17 +114,17 @@ export const getMessages = asyncHandler(async (req, res) => {
   res.status(200).json({
     success: true,
     count: messages.length,
-    messages: messages.map((m) => ({
-      id: m._id,
-      role: m.role,
-      content: m.content,
-      createdAt: m.createdAt,
+    messages: messages.map((msg) => ({
+      id: msg._id,
+      role: msg.role,
+      content: msg.content,
+      createdAt: msg.createdAt,
     })),
   });
 });
 
 /**
- * @desc    Generate summary for document owned by authenticated user
+ * @desc    Summarize a document owned by authenticated user
  * @route   POST /api/documents/:id/summarize
  * @access  Private
  */
@@ -122,7 +139,7 @@ export const summarizeDocument = asyncHandler(async (req, res) => {
     });
   }
 
-  // If document already has a summary, return cached summary
+  // If document already has a generated summary, return cached summary
   if (document.summary) {
     return res.status(200).json({
       success: true,
@@ -131,14 +148,18 @@ export const summarizeDocument = asyncHandler(async (req, res) => {
     });
   }
 
-  const summary = await generateSummary({ documentText: document.extractedText });
+  // Generate new summary
+  const summaryText = await generateSummary({
+    documentText: document.extractedText,
+  });
 
-  document.summary = summary;
+  // Save summary to document
+  document.summary = summaryText;
   await document.save();
 
   res.status(200).json({
     success: true,
-    summary: document.summary,
+    summary: summaryText,
     cached: false,
   });
 });

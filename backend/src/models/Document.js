@@ -1,8 +1,29 @@
 import mongoose from 'mongoose';
 
 /**
+ * Chunk Schema for Document RAG Embeddings
+ */
+const chunkSchema = new mongoose.Schema(
+  {
+    index: {
+      type: Number,
+      required: true,
+    },
+    text: {
+      type: String,
+      required: true,
+    },
+    embedding: {
+      type: [Number],
+      required: true,
+    },
+  },
+  { _id: false }
+);
+
+/**
  * Document Schema
- * Represents an uploaded PDF or image file and its extracted text, owned by a specific User.
+ * Represents an uploaded PDF or image file, its extracted text, RAG chunks/embeddings, owned by a specific User.
  */
 const documentSchema = new mongoose.Schema(
   {
@@ -30,6 +51,10 @@ const documentSchema = new mongoose.Schema(
       type: String,
       enum: ['text', 'ocr'],
       default: 'text',
+    },
+    chunks: {
+      type: [chunkSchema],
+      default: [],
     },
     status: {
       type: String,

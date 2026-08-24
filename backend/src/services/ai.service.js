@@ -1,34 +1,39 @@
 /**
  * AI Service for DocuMind
- * Handles LLM prompt construction, context truncation, Q&A generation, and summarization.
+ * Handles LLM prompt construction, context truncation, RAG Q&A generation, and summarization.
  * Implements a provider-agnostic design reading LLM_API_KEY, LLM_API_BASE_URL, and LLM_MODEL_NAME.
  */
 
-// Maximum character budget for document context (~6,000–8,000 tokens)
+// Maximum character budget for fallback document context (~6,000–8,000 tokens)
 const MAX_CONTEXT_CHARS = 24000;
 
 /**
- * Builds grounded prompt using system instructions, document context, chat history, and user question.
+ * Builds grounded prompt using system instructions, retrieved document chunks (or document text fallback), chat history, and user question.
  */
-export const buildPrompt = ({ documentText, conversationHistory = [], question }) => {
-  let truncatedText = documentText || '';
-  let truncationNotice = '';
+export const buildPrompt = ({ retrievedChunks = [], documentText = '', conversationHistory = [], question }) => {
+  let contextContent = '';
 
-  if (truncatedText.length > MAX_CONTEXT_CHARS) {
-    truncatedText = truncatedText.slice(0, MAX_CONTEXT_CHARS);
-    truncationNotice = '\n[Note: Document text was truncated to fit context limits.]';
+  if (Array.isArray(retrievedChunks) && retrievedChunks.length > 0) {
+    contextContent = retrievedChunks
+      .map((c) => `[Chunk #${c.chunkIndex}]:\n${c.text}`)
+      .join('\n\n');
+  } else {
+    let truncatedText = documentText || '';
+    if (truncatedText.length > MAX_CONTEXT_CHARS) {
+      truncatedText = truncatedText.slice(0, MAX_CONTEXT_CHARS) + '\n[Note: Document text was truncated.]';
+    }
+    contextContent = truncatedText || 'No document context available.';
   }
 
   const historyText = conversationHistory.length > 0
     ? conversationHistory.map((m) => `${m.role.toUpperCase()}: ${m.content}`).join('\n')
     : 'None';
 
-  return `You are a helpful assistant answering questions strictly based on the document provided below. If the answer is not contained in the document, say so clearly instead of guessing.
+  return `You are an AI assistant for DocuMind answering questions strictly based on the retrieved document context provided below. If the retrieved context does not contain enough information to answer the question, state clearly: "The document does not provide enough information to answer this question." Do not invent or assume facts outside the provided context.
 
-DOCUMENT:
-"""
-${truncatedText}${truncationNotice}
-"""
+<<<CONTEXT>>>
+${contextContent}
+<<<END CONTEXT>>>
 
 CONVERSATION SO FAR:
 ${historyText}
@@ -55,7 +60,7 @@ ${truncatedText}
 };
 
 /**
- * Mock fallback generator for dev/test mode when LLM_API_KEY is set to 'mock_key_for_dev'.
+ * Mock fallback generator for dev/test mode when LLM_API_KEY is set to 'mock_key_for_dev' or missing.
  */
 const generateMockDevResponse = (documentText, question, isSummary = false) => {
   if (isSummary) {
@@ -89,7 +94,6 @@ const callLLMAPI = async (prompt, documentText, question = '', isSummary = false
 
   // Development fallback only when explicit mock key is configured
   if (!apiKey || apiKey === 'mock_key_for_dev') {
-    console.log('[AI Service] Operating in dev/mock mode (LLM_API_KEY set to mock_key_for_dev).');
     return generateMockDevResponse(documentText, question, isSummary);
   }
 
@@ -156,11 +160,14 @@ const callLLMAPI = async (prompt, documentText, question = '', isSummary = false
 };
 
 /**
- * Generate answer grounded in document text.
+ * Generate answer grounded in retrieved document chunks.
  */
-export const generateAnswer = async ({ documentText, conversationHistory = [], question }) => {
-  const prompt = buildPrompt({ documentText, conversationHistory, question });
-  return await callLLMAPI(prompt, documentText, question, false);
+export const generateAnswer = async ({ retrievedChunks = [], documentText = '', conversationHistory = [], question }) => {
+  const prompt = buildPrompt({ retrievedChunks, documentText, conversationHistory, question });
+  const contextForFallback = Array.isArray(retrievedChunks) && retrievedChunks.length > 0
+    ? retrievedChunks.map(c => c.text).join('\n')
+    : documentText;
+  return await callLLMAPI(prompt, contextForFallback, question, false);
 };
 
 /**
