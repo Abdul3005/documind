@@ -35,10 +35,11 @@ export const createDocumentRecord = async (file, userId) => {
   try {
     // 2. Perform PDF parsing or Image OCR extraction from file on disk
     console.log(`[Document Service] Extracting text for document ${document._id} (${file.originalname}) for user ${userId}...`);
-    const extractedContent = await extractText(file.path, fileType);
+    const { extractedText, extractionMethod } = await extractText(file.path, fileType);
 
-    // 3. Update document record with extracted text and status 'ready'
-    document.extractedText = extractedContent;
+    // 3. Update document record with extracted text, extraction method, and status 'ready'
+    document.extractedText = extractedText;
+    document.extractionMethod = extractionMethod || (fileType === 'image' ? 'ocr' : 'text');
     document.status = 'ready';
     await document.save();
 

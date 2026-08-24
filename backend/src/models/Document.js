@@ -26,6 +26,11 @@ const documentSchema = new mongoose.Schema(
       type: String,
       required: [true, 'Extracted text is required'],
     },
+    extractionMethod: {
+      type: String,
+      enum: ['text', 'ocr'],
+      default: 'text',
+    },
     status: {
       type: String,
       required: true,

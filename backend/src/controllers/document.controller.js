@@ -28,6 +28,7 @@ export const uploadDocument = asyncHandler(async (req, res) => {
       filename: document.filename,
       fileType: document.fileType,
       status: document.status,
+      extractionMethod: document.extractionMethod,
       extractedText: document.extractedText,
       createdAt: document.createdAt,
     },
@@ -49,6 +50,7 @@ export const getDocuments = asyncHandler(async (req, res) => {
       filename: doc.filename,
       fileType: doc.fileType,
       status: doc.status,
+      extractionMethod: doc.extractionMethod,
       createdAt: doc.createdAt,
     })),
   });
@@ -68,6 +70,7 @@ export const getDocument = asyncHandler(async (req, res) => {
       filename: document.filename,
       fileType: document.fileType,
       status: document.status,
+      extractionMethod: document.extractionMethod,
       extractedText: document.extractedText,
       summary: document.summary,
       createdAt: document.createdAt,
