@@ -1,5 +1,6 @@
 import express from 'express';
 import { uploadSingleDocument } from '../middleware/upload.middleware.js';
+import { protect } from '../middleware/auth.middleware.js';
 import {
   uploadDocument,
   getDocuments,
@@ -8,6 +9,9 @@ import {
 } from '../controllers/document.controller.js';
 
 const router = express.Router();
+
+// Protect all document management endpoints
+router.use(protect);
 
 // Document Routes
 router.post('/upload', uploadSingleDocument, uploadDocument);

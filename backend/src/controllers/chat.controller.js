@@ -6,7 +6,7 @@ import { generateAnswer, generateSummary } from '../services/ai.service.js';
 /**
  * @desc    Send question to document, get AI answer & store in chat history
  * @route   POST /api/documents/:id/messages
- * @access  Public
+ * @access  Private
  */
 export const sendMessage = asyncHandler(async (req, res) => {
   const { id } = req.params;
@@ -19,8 +19,8 @@ export const sendMessage = asyncHandler(async (req, res) => {
     });
   }
 
-  // 1. Find document
-  const document = await Document.findById(id);
+  // 1. Find document owned by authenticated user
+  const document = await Document.findOne({ _id: id, userId: req.userId });
   if (!document) {
     return res.status(404).json({
       success: false,
@@ -28,8 +28,8 @@ export const sendMessage = asyncHandler(async (req, res) => {
     });
   }
 
-  // 2. Fetch last 6 messages for context
-  const previousMessages = await Message.find({ documentId: id })
+  // 2. Fetch last 6 messages for context owned by authenticated user
+  const previousMessages = await Message.find({ documentId: id, userId: req.userId })
     .sort({ createdAt: -1 })
     .limit(6);
   
@@ -43,16 +43,18 @@ export const sendMessage = asyncHandler(async (req, res) => {
     question: content.trim(),
   });
 
-  // 4. Save User Message
+  // 4. Save User Message with userId
   const userMessage = await Message.create({
     documentId: id,
+    userId: req.userId,
     role: 'user',
     content: content.trim(),
   });
 
-  // 5. Save Assistant Message
+  // 5. Save Assistant Message with userId
   const assistantMessage = await Message.create({
     documentId: id,
+    userId: req.userId,
     role: 'assistant',
     content: assistantResponse,
   });
@@ -75,14 +77,14 @@ export const sendMessage = asyncHandler(async (req, res) => {
 });
 
 /**
- * @desc    Get all chat messages for a document
+ * @desc    Get all chat messages for a document owned by authenticated user
  * @route   GET /api/documents/:id/messages
- * @access  Public
+ * @access  Private
  */
 export const getMessages = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
-  const document = await Document.findById(id);
+  const document = await Document.findOne({ _id: id, userId: req.userId });
   if (!document) {
     return res.status(404).json({
       success: false,
@@ -90,7 +92,7 @@ export const getMessages = asyncHandler(async (req, res) => {
     });
   }
 
-  const messages = await Message.find({ documentId: id }).sort({ createdAt: 1 });
+  const messages = await Message.find({ documentId: id, userId: req.userId }).sort({ createdAt: 1 });
 
   res.status(200).json({
     success: true,
@@ -105,14 +107,14 @@ export const getMessages = asyncHandler(async (req, res) => {
 });
 
 /**
- * @desc    Generate summary for document
+ * @desc    Generate summary for document owned by authenticated user
  * @route   POST /api/documents/:id/summarize
- * @access  Public
+ * @access  Private
  */
 export const summarizeDocument = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
-  const document = await Document.findById(id);
+  const document = await Document.findOne({ _id: id, userId: req.userId });
   if (!document) {
     return res.status(404).json({
       success: false,

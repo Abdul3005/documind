@@ -1,23 +1,31 @@
 import path from 'path';
 import fs from 'fs';
 import Document from '../models/Document.js';
+import Message from '../models/Message.js';
 import { extractText } from './ocr.service.js';
 
 /**
- * Service to process document upload, run OCR/PDF text extraction, and manage Document records.
+ * Service to process document upload, run OCR/PDF text extraction, and manage Document records scoped to a specific User.
  */
-export const createDocumentRecord = async (file) => {
+export const createDocumentRecord = async (file, userId) => {
   if (!file) {
     const error = new Error('No file uploaded.');
     error.statusCode = 400;
     throw error;
   }
 
+  if (!userId) {
+    const error = new Error('User ID is required.');
+    error.statusCode = 401;
+    throw error;
+  }
+
   const ext = path.extname(file.originalname).toLowerCase();
   const fileType = ext === '.pdf' ? 'pdf' : 'image';
 
-  // 1. Create Document record in MongoDB with status 'processing'
+  // 1. Create Document record in MongoDB with status 'processing' owned by userId
   let document = await Document.create({
+    userId,
     filename: file.originalname,
     fileType,
     extractedText: 'Processing document text...',
@@ -26,7 +34,7 @@ export const createDocumentRecord = async (file) => {
 
   try {
     // 2. Perform PDF parsing or Image OCR extraction from file on disk
-    console.log(`[Document Service] Extracting text for document ${document._id} (${file.originalname})...`);
+    console.log(`[Document Service] Extracting text for document ${document._id} (${file.originalname}) for user ${userId}...`);
     const extractedContent = await extractText(file.path, fileType);
 
     // 3. Update document record with extracted text and status 'ready'
@@ -61,12 +69,12 @@ export const createDocumentRecord = async (file) => {
   }
 };
 
-export const getAllDocuments = async () => {
-  return await Document.find().sort({ createdAt: -1 });
+export const getAllDocuments = async (userId) => {
+  return await Document.find({ userId }).sort({ createdAt: -1 });
 };
 
-export const getDocumentById = async (id) => {
-  const document = await Document.findById(id);
+export const getDocumentById = async (id, userId) => {
+  const document = await Document.findOne({ _id: id, userId });
   if (!document) {
     const error = new Error('Document not found');
     error.statusCode = 404;
@@ -75,12 +83,16 @@ export const getDocumentById = async (id) => {
   return document;
 };
 
-export const deleteDocumentById = async (id) => {
-  const document = await Document.findByIdAndDelete(id);
+export const deleteDocumentById = async (id, userId) => {
+  const document = await Document.findOneAndDelete({ _id: id, userId });
   if (!document) {
     const error = new Error('Document not found');
     error.statusCode = 404;
     throw error;
   }
+
+  // Cascade delete all messages associated with this document and user
+  await Message.deleteMany({ documentId: id, userId });
+
   return document;
 };

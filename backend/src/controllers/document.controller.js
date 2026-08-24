@@ -9,7 +9,7 @@ import {
 /**
  * @desc    Upload document file and create record
  * @route   POST /api/documents/upload
- * @access  Public
+ * @access  Private
  */
 export const uploadDocument = asyncHandler(async (req, res) => {
   if (!req.file) {
@@ -19,7 +19,7 @@ export const uploadDocument = asyncHandler(async (req, res) => {
     });
   }
 
-  const document = await createDocumentRecord(req.file);
+  const document = await createDocumentRecord(req.file, req.userId);
 
   res.status(201).json({
     success: true,
@@ -35,12 +35,12 @@ export const uploadDocument = asyncHandler(async (req, res) => {
 });
 
 /**
- * @desc    Get list of all documents
+ * @desc    Get list of all documents owned by authenticated user
  * @route   GET /api/documents
- * @access  Public
+ * @access  Private
  */
 export const getDocuments = asyncHandler(async (req, res) => {
-  const documents = await getAllDocuments();
+  const documents = await getAllDocuments(req.userId);
   res.status(200).json({
     success: true,
     count: documents.length,
@@ -55,12 +55,12 @@ export const getDocuments = asyncHandler(async (req, res) => {
 });
 
 /**
- * @desc    Get single document details
+ * @desc    Get single document details owned by authenticated user
  * @route   GET /api/documents/:id
- * @access  Public
+ * @access  Private
  */
 export const getDocument = asyncHandler(async (req, res) => {
-  const document = await getDocumentById(req.params.id);
+  const document = await getDocumentById(req.params.id, req.userId);
   res.status(200).json({
     success: true,
     document: {
@@ -76,12 +76,12 @@ export const getDocument = asyncHandler(async (req, res) => {
 });
 
 /**
- * @desc    Delete document by ID
+ * @desc    Delete document by ID owned by authenticated user
  * @route   DELETE /api/documents/:id
- * @access  Public
+ * @access  Private
  */
 export const deleteDocument = asyncHandler(async (req, res) => {
-  await deleteDocumentById(req.params.id);
+  await deleteDocumentById(req.params.id, req.userId);
   res.status(200).json({
     success: true,
     message: 'Document deleted successfully',
