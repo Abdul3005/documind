@@ -91,3 +91,13 @@ Development of DocuMind was conducted in continuous pair programming with **Anti
 - **Environment Example**: `backend/.env.example` contains only placeholder key strings.
 - **Render Config**: `backend/render.yaml` sets `sync: false` for secrets, ensuring keys are configured securely via dashboard environment variables.
 - **Repository Hygiene**: Ad-hoc test scripts were purged, leaving a clean, standard project directory structure.
+
+---
+
+## 6. V2 Engineering & Improvement Log
+
+| Phase | Description | Key Achievements & Engineering Decisions |
+| :--- | :--- | :--- |
+| **V2 Phase 0** | Baseline Tagging & Branching | Tagged current working submission commit `c7f0180` as `v1-submission` to preserve initial 8.0 baseline. Created and checked out `v2-improvements` branch. Zero application code modified. |
+| **V2 Phase 1** | User Authentication System | Implemented `User` Mongoose model with `bcryptjs` password hashing pre-save hook and `matchPassword` method. Built `auth.service.js`, `auth.controller.js`, `auth.routes.js`, and `auth.middleware.js` (`protect`). Mounted `/api/auth` (register, login, me). Created 10 integration tests (`backend/tests/auth.test.js`) with Vitest, Supertest, and `mongodb-memory-server` covering user registration, password non-plaintext validation, duplicate rejection, credential verification, JWT issuance, and protected route access (10/10 tests passed). |
+
