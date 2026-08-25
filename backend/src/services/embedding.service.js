@@ -8,8 +8,7 @@ const VECTOR_DIMENSION = 768;
  * Deterministic mock embedding generator for dev/test mode.
  * Generates a normalized 768-dimension vector based on text word hashing.
  */
-
-const generateMockVector = (text, dim = VECTOR_DIMENSION) => {
+export const generateMockVector = (text, dim = VECTOR_DIMENSION) => {
   const vector = new Array(dim).fill(0);
   const words = (text || '').toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/).filter(Boolean);
   
@@ -42,9 +41,10 @@ export const generateEmbedding = async (text) => {
   const apiKey = process.env.LLM_API_KEY || process.env.GEMINI_API_KEY;
   const baseUrl = process.env.LLM_API_BASE_URL || 'https://generativelanguage.googleapis.com/v1beta';
   const modelName = 'text-embedding-004';
+  const isTestOrMock = process.env.NODE_ENV === 'test' || apiKey === 'mock_key_for_dev' || (!apiKey && process.env.NODE_ENV !== 'production');
 
-  // Dev/Test mode fallback when API key is missing or mock key is set
-  if (!apiKey || apiKey === 'mock_key_for_dev') {
+  // Dev/Test mode fallback when explicitly configured for mock/test execution
+  if (isTestOrMock) {
     return generateMockVector(text);
   }
 
@@ -75,10 +75,9 @@ export const generateEmbedding = async (text) => {
 
     return values;
   } catch (error) {
-    console.error('[Embedding Service Exception]:', error.message);
-    // Fall back to mock vector if API call fails to keep pipeline resilient
-    console.warn('[Embedding Service] Falling back to local vector generation due to API error.');
-    return generateMockVector(text);
+    console.error('[Embedding Service Error]: Live API call failed:', error.message);
+    // Rethrow error so real API key failures are NOT silently hidden behind mock vectors
+    throw error;
   }
 };
 

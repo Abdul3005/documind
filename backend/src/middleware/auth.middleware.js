@@ -23,7 +23,14 @@ export const protect = asyncHandler(async (req, res, next) => {
   }
 
   try {
-    const secret = process.env.JWT_SECRET || 'documind_v2_default_jwt_secret_dev_key';
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+      return res.status(500).json({
+        success: false,
+        error: 'JWT_SECRET environment variable is missing.',
+      });
+    }
+
     const decoded = jwt.verify(token, secret);
 
     const user = await User.findById(decoded.id);

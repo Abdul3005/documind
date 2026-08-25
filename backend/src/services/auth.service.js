@@ -5,7 +5,10 @@ import User from '../models/User.js';
  * Generate JWT token signed with secret and expiration
  */
 export const generateToken = (userId) => {
-  const secret = process.env.JWT_SECRET || 'documind_v2_default_jwt_secret_dev_key';
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('JWT_SECRET environment variable is missing.');
+  }
   const expiresIn = process.env.JWT_EXPIRES_IN || '7d';
   return jwt.sign({ id: userId }, secret, { expiresIn });
 };

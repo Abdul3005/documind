@@ -10,6 +10,7 @@ import { chunkText } from '../src/services/chunking.service.js';
 import { generateEmbedding, generateBatchEmbeddings } from '../src/services/embedding.service.js';
 import { cosineSimilarity, retrieveRelevantChunks } from '../src/services/retrieval.service.js';
 import { buildPrompt } from '../src/services/ai.service.js';
+import { generateToken } from '../src/services/auth.service.js';
 
 let mongoServer;
 let tokenA;
@@ -19,7 +20,8 @@ let userBId;
 let docAId;
 
 beforeAll(async () => {
-  // Enforce mock mode for deterministic offline testing
+  // Enforce secret and mock mode for deterministic offline testing
+  process.env.JWT_SECRET = process.env.JWT_SECRET || 'test_jwt_secret_key_for_testing';
   process.env.LLM_API_KEY = 'mock_key_for_dev';
 
   mongoServer = await MongoMemoryServer.create();
@@ -212,6 +214,30 @@ describe('Phase 4: RAG Architecture & Vector Search Pipeline', () => {
       expect(res.body.assistantMessage.sources.length).toBe(3);
       expect(res.body.assistantMessage.sources[0]).toHaveProperty('chunkIndex');
       expect(res.body.assistantMessage.sources[0]).toHaveProperty('similarity');
+    }, 15000);
+  });
+
+  describe('7. Hardened Audit Fixes Verification', () => {
+    it('should throw an explicit error when JWT_SECRET environment variable is missing', () => {
+      const originalSecret = process.env.JWT_SECRET;
+      delete process.env.JWT_SECRET;
+
+      expect(() => generateToken('sample_user_id')).toThrow(/JWT_SECRET environment variable is missing/i);
+
+      process.env.JWT_SECRET = originalSecret;
+    });
+
+    it('should rethrow error when real API key is configured and API call fails', async () => {
+      const originalNodeEnv = process.env.NODE_ENV;
+      const originalKey = process.env.LLM_API_KEY;
+
+      process.env.NODE_ENV = 'production';
+      process.env.LLM_API_KEY = 'invalid_real_api_key_123';
+
+      await expect(generateEmbedding('Test text')).rejects.toThrow();
+
+      process.env.NODE_ENV = originalNodeEnv;
+      process.env.LLM_API_KEY = originalKey;
     }, 15000);
   });
 });
