@@ -39,7 +39,7 @@ function AppContent() {
     uploadDocument,
     deleteDocument,
     clearError: clearDocsError,
-  } = useDocuments();
+  } = useDocuments(isAuthenticated);
 
   const {
     document: activeDocument,
