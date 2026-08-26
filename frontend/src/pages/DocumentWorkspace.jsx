@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import DocumentPreviewPanel from '../components/DocumentPreviewPanel.jsx';
 import ChatWindow from '../components/ChatWindow.jsx';
 import LoadingSpinner from '../components/LoadingSpinner.jsx';
-import { ArrowLeft, FileText, Image, Trash2, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
+import ConfirmModal from '../components/ConfirmModal.jsx';
+import { ArrowLeft, FileText, Image, Trash2, CheckCircle2, Scan, Sparkles } from 'lucide-react';
 
 export default function DocumentWorkspace({
   document,
@@ -15,6 +16,9 @@ export default function DocumentWorkspace({
   onGenerateSummary,
   onDeleteDocument,
 }) {
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
   if (loading || !document) {
     return (
       <div className="flex flex-col items-center justify-center h-[calc(100vh-8rem)] glass-panel rounded-2xl border border-slate-800">
@@ -24,9 +28,29 @@ export default function DocumentWorkspace({
   }
 
   const docId = document.id || document._id;
+  const isOcr = document.extractionMethod === 'ocr';
+
+  const handleDeleteConfirm = async () => {
+    if (!docId || !onDeleteDocument) return;
+    setIsDeleting(true);
+    try {
+      await onDeleteDocument(docId);
+    } finally {
+      setIsDeleting(false);
+      setShowConfirm(false);
+    }
+  };
 
   return (
     <div className="flex flex-col h-[calc(100vh-6rem)] space-y-4">
+      {/* Confirm Delete Modal */}
+      <ConfirmModal
+        isOpen={showConfirm}
+        loading={isDeleting}
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => setShowConfirm(false)}
+      />
+
       {/* Workspace Header */}
       <div className="flex items-center justify-between px-5 py-3 glass-panel rounded-2xl border border-slate-800 shrink-0">
         <div className="flex items-center space-x-4">
@@ -49,8 +73,25 @@ export default function DocumentWorkspace({
               )}
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-slate-100 truncate max-w-md">{document.filename}</h2>
-              <div className="flex items-center space-x-2 text-[11px] text-slate-400">
+              <div className="flex items-center space-x-2">
+                <h2 className="text-sm font-semibold text-slate-100 truncate max-w-md">{document.filename}</h2>
+                
+                {/* STEP 3 — OCR Method Badge in Workspace */}
+                {document.status === 'ready' && (
+                  <span
+                    className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded-md text-[10px] font-semibold border ${
+                      isOcr
+                        ? 'bg-amber-950/40 text-amber-300 border-amber-800/40'
+                        : 'bg-indigo-950/40 text-indigo-300 border-indigo-800/40'
+                    }`}
+                  >
+                    {isOcr ? <Scan className="w-3 h-3 text-amber-400" /> : <Sparkles className="w-3 h-3 text-indigo-400" />}
+                    <span>{isOcr ? 'Extracted via OCR' : 'Native Text'}</span>
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center space-x-2 text-[11px] text-slate-400 mt-0.5">
                 <span className="uppercase font-medium">{document.fileType}</span>
                 <span>•</span>
                 <span className="flex items-center space-x-1 text-emerald-400">
@@ -64,7 +105,7 @@ export default function DocumentWorkspace({
 
         {onDeleteDocument && (
           <button
-            onClick={() => onDeleteDocument(docId)}
+            onClick={() => setShowConfirm(true)}
             className="flex items-center space-x-1.5 px-3 py-1.5 bg-red-950/40 hover:bg-red-900/60 text-red-300 text-xs font-medium rounded-xl border border-red-800/40 transition"
           >
             <Trash2 className="w-3.5 h-3.5" />
