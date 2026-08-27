@@ -1,5 +1,5 @@
 /**
- * Service for generating text embeddings using Google Gemini text-embedding-004 model.
+ * Service for generating text embeddings using Google Gemini models (default: gemini-embedding-2).
  */
 
 const VECTOR_DIMENSION = 768;
@@ -32,15 +32,16 @@ export const generateMockVector = (text, dim = VECTOR_DIMENSION) => {
 };
 
 /**
- * Generates an embedding vector for a single string using Gemini text-embedding-004.
+ * Generates an embedding vector for a single string using Gemini API (gemini-embedding-2).
+ * Strictly outputs 768-dimensional normalized floating point vectors.
  * 
  * @param {string} text - Input text to embed.
- * @returns {Promise<number[]>} Array of floating point vector numbers.
+ * @returns {Promise<number[]>} Array of 768 floating point vector numbers.
  */
 export const generateEmbedding = async (text) => {
   const apiKey = process.env.LLM_API_KEY || process.env.GEMINI_API_KEY;
   const baseUrl = process.env.LLM_API_BASE_URL || 'https://generativelanguage.googleapis.com/v1beta';
-  const modelName = 'text-embedding-004';
+  const modelName = process.env.LLM_EMBEDDING_MODEL || 'gemini-embedding-2';
   const isTestOrMock = process.env.NODE_ENV === 'test' || apiKey === 'mock_key_for_dev' || (!apiKey && process.env.NODE_ENV !== 'production');
 
   // Dev/Test mode fallback when explicitly configured for mock/test execution
@@ -58,6 +59,7 @@ export const generateEmbedding = async (text) => {
         content: {
           parts: [{ text }],
         },
+        outputDimensionality: VECTOR_DIMENSION,
       }),
     });
 
@@ -71,6 +73,10 @@ export const generateEmbedding = async (text) => {
     const values = data.embedding?.values;
     if (!values || !Array.isArray(values)) {
       throw new Error('Invalid embedding response format from Gemini API.');
+    }
+
+    if (values.length !== VECTOR_DIMENSION) {
+      throw new Error(`Embedding dimension mismatch: expected ${VECTOR_DIMENSION}, got ${values.length}`);
     }
 
     return values;
