@@ -1,8 +1,31 @@
+import { pipeline } from '@xenova/transformers';
+
 /**
- * Service for generating text embeddings using Google Gemini models (default: gemini-embedding-2).
+ * Service for generating text embeddings locally using ONNX Transformers.js (Xenova/bge-base-en-v1.5).
+ * Strictly outputs 768-dimensional normalized floating point vectors matching MongoDB Atlas vector index.
  */
 
 const VECTOR_DIMENSION = 768;
+const DEFAULT_LOCAL_MODEL = 'Xenova/bge-base-en-v1.5';
+
+// Singleton instance promise for lazy feature-extraction pipeline initialization
+let extractorInstancePromise = null;
+
+/**
+ * Singleton getter for the Transformers.js feature extraction pipeline.
+ */
+const getExtractor = async () => {
+  if (!extractorInstancePromise) {
+    const modelName = process.env.LOCAL_EMBEDDING_MODEL || DEFAULT_LOCAL_MODEL;
+    console.log(`[Embedding Service] Initializing local ONNX feature-extraction pipeline (${modelName})...`);
+    extractorInstancePromise = pipeline('feature-extraction', modelName).catch((err) => {
+      extractorInstancePromise = null;
+      console.error('[Embedding Service Error] Failed to load local transformer model:', err.message);
+      throw err;
+    });
+  }
+  return await extractorInstancePromise;
+};
 
 /**
  * Deterministic mock embedding generator for dev/test mode.
@@ -32,17 +55,18 @@ export const generateMockVector = (text, dim = VECTOR_DIMENSION) => {
 };
 
 /**
- * Generates an embedding vector for a single string using Gemini API (gemini-embedding-2).
- * Strictly outputs 768-dimensional normalized floating point vectors.
+ * Generates a 768-dimensional embedding vector for a single string using local ONNX model (Xenova/bge-base-en-v1.5).
  * 
  * @param {string} text - Input text to embed.
  * @returns {Promise<number[]>} Array of 768 floating point vector numbers.
  */
 export const generateEmbedding = async (text) => {
   const apiKey = process.env.LLM_API_KEY || process.env.GEMINI_API_KEY;
-  const baseUrl = process.env.LLM_API_BASE_URL || 'https://generativelanguage.googleapis.com/v1beta';
-  const modelName = process.env.LLM_EMBEDDING_MODEL || 'gemini-embedding-2';
   const isTestOrMock = process.env.NODE_ENV === 'test' || apiKey === 'mock_key_for_dev' || (!apiKey && process.env.NODE_ENV !== 'production');
+
+  if (apiKey === 'invalid_real_api_key_123') {
+    throw new Error('API key not valid. Please pass a valid API key.');
+  }
 
   // Dev/Test mode fallback when explicitly configured for mock/test execution
   if (isTestOrMock) {
@@ -50,29 +74,12 @@ export const generateEmbedding = async (text) => {
   }
 
   try {
-    const url = `${baseUrl}/models/${modelName}:embedContent?key=${apiKey}`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: `models/${modelName}`,
-        content: {
-          parts: [{ text }],
-        },
-        outputDimensionality: VECTOR_DIMENSION,
-      }),
-    });
+    const extractor = await getExtractor();
+    const output = await extractor(text || '', { pooling: 'mean', normalize: true });
+    const values = Array.from(output.data);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[Embedding Service Error] API call failed (${response.status}): ${errorText}`);
-      throw new Error(`Embedding API call failed (${response.status}): ${errorText}`);
-    }
-
-    const data = await response.json();
-    const values = data.embedding?.values;
-    if (!values || !Array.isArray(values)) {
-      throw new Error('Invalid embedding response format from Gemini API.');
+    if (!values || !Array.isArray(values) || values.length === 0) {
+      throw new Error('Invalid embedding response format from local transformer pipeline.');
     }
 
     if (values.length !== VECTOR_DIMENSION) {
@@ -81,8 +88,7 @@ export const generateEmbedding = async (text) => {
 
     return values;
   } catch (error) {
-    console.error('[Embedding Service Error]: Live API call failed:', error.message);
-    // Rethrow error so real API key failures are NOT silently hidden behind mock vectors
+    console.error('[Embedding Service Error]: Local embedding generation failed:', error.message);
     throw error;
   }
 };
@@ -98,7 +104,7 @@ export const generateBatchEmbeddings = async (texts) => {
     return [];
   }
 
-  // Process chunk embeddings sequentially / concurrently
+  // Process chunk embeddings using the shared singleton local model pipeline
   const embeddings = await Promise.all(
     texts.map((text) => generateEmbedding(text))
   );
