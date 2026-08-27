@@ -1,6 +1,20 @@
 import { useState, useEffect, useCallback } from 'react';
 import { fetchDocumentById, fetchMessages, sendMessage, generateDocumentSummary } from '../services/api.js';
 
+const formatUserFriendlyError = (rawError) => {
+  if (!rawError) return 'An unexpected error occurred.';
+  const str = String(rawError);
+  if (
+    str.includes('503') ||
+    str.includes('UNAVAILABLE') ||
+    str.includes('high demand') ||
+    str.includes('temporarily busy')
+  ) {
+    return 'The AI service is temporarily busy. Please try again in a moment.';
+  }
+  return str;
+};
+
 export function useChat(documentId) {
   const [document, setDocument] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -24,7 +38,7 @@ export function useChat(documentId) {
       if (msgRes.success) setMessages(msgRes.messages || []);
     } catch (err) {
       console.error('[useChat] Failed to load workspace data:', err);
-      setError(err.response?.data?.error || 'Failed to load document workspace.');
+      setError(formatUserFriendlyError(err.response?.data?.error || 'Failed to load document workspace.'));
     } finally {
       setLoading(false);
     }
@@ -60,7 +74,7 @@ export function useChat(documentId) {
       }
     } catch (err) {
       console.error('[useChat] Send message failed:', err);
-      setError(err.response?.data?.error || 'Failed to get AI response.');
+      setError(formatUserFriendlyError(err.response?.data?.error || err.message || 'Failed to get AI response.'));
       // Remove temp message on error
       setMessages((prev) => prev.filter((m) => m.id !== tempUserMsg.id));
     } finally {
@@ -80,7 +94,7 @@ export function useChat(documentId) {
       }
     } catch (err) {
       console.error('[useChat] Summary generation failed:', err);
-      setError(err.response?.data?.error || 'Failed to generate summary.');
+      setError(formatUserFriendlyError(err.response?.data?.error || err.message || 'Failed to generate summary.'));
     } finally {
       setIsSummarizing(false);
     }
