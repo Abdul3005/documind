@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import authRoutes from './routes/auth.routes.js';
 import documentRoutes from './routes/document.routes.js';
 import chatRoutes from './routes/chat.routes.js';
 import { errorHandler } from './middleware/errorHandler.js';
@@ -24,6 +25,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // API Routes
+app.use('/api/auth', authRoutes);
 app.use('/api/documents', documentRoutes);
 app.use('/api/documents', chatRoutes);
 

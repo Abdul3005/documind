@@ -30,7 +30,7 @@ export default function ChatWindow({ messages = [], onSendMessage, isLoading = f
         </div>
         <div className="flex items-center space-x-2 px-2.5 py-1 bg-emerald-950/60 border border-emerald-800/40 text-emerald-400 rounded-full text-[11px] font-medium">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-          <span>Gemini 1.5 Online</span>
+          <span>Local AI Online</span>
         </div>
       </div>
 

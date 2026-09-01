@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { User, Bot, Copy, Check } from 'lucide-react';
+import CitationBadge from './CitationBadge.jsx';
 
 export default function ChatMessage({ message }) {
   const isUser = message.role === 'user';
@@ -36,6 +37,9 @@ export default function ChatMessage({ message }) {
             <ReactMarkdown>{message.content}</ReactMarkdown>
           )}
         </div>
+
+        {/* Grounded RAG Citation Sources */}
+        {!isUser && message.sources && <CitationBadge sources={message.sources} />}
 
         <div className={`flex items-center justify-between mt-2 pt-2 border-t text-[10px] ${
           isUser ? 'border-indigo-500/40 text-indigo-200' : 'border-slate-800 text-slate-500'

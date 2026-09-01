@@ -1,16 +1,36 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Navbar from './components/Navbar.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import DocumentWorkspace from './pages/DocumentWorkspace.jsx';
+import LoginPage from './pages/LoginPage.jsx';
+import RegisterPage from './pages/RegisterPage.jsx';
 import ErrorBanner from './components/ErrorBanner.jsx';
+import LoadingSpinner from './components/LoadingSpinner.jsx';
+import { AuthProvider, useAuth } from './context/AuthContext.jsx';
 import { useDocuments } from './hooks/useDocuments.js';
 import { useChat } from './hooks/useChat.js';
 
-export default function App() {
-  const [activePage, setActivePage] = useState('dashboard'); // 'dashboard' | 'workspace'
+function AppContent() {
+  const { isAuthenticated, loading: authLoading } = useAuth();
+  const [activePage, setActivePage] = useState('dashboard'); // 'dashboard' | 'workspace' | 'login' | 'register'
   const [selectedDocId, setSelectedDocId] = useState(null);
 
-  // Custom Hooks
+  // Sync page state when auth status changes
+  useEffect(() => {
+    if (!authLoading) {
+      if (isAuthenticated) {
+        if (activePage === 'login' || activePage === 'register') {
+          setActivePage('dashboard');
+        }
+      } else {
+        if (activePage !== 'register') {
+          setActivePage('login');
+        }
+      }
+    }
+  }, [isAuthenticated, authLoading]);
+
+  // Custom Hooks (only load documents if authenticated)
   const {
     documents,
     loading: docsLoading,
@@ -19,7 +39,7 @@ export default function App() {
     uploadDocument,
     deleteDocument,
     clearError: clearDocsError,
-  } = useDocuments();
+  } = useDocuments(isAuthenticated);
 
   const {
     document: activeDocument,
@@ -64,6 +84,14 @@ export default function App() {
 
   const activeError = docsError || chatError;
 
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <LoadingSpinner size="lg" label="Restoring authenticated session..." />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-indigo-500 selection:text-white">
       {/* Top Navbar */}
@@ -79,7 +107,13 @@ export default function App() {
           }}
         />
 
-        {activePage === 'dashboard' ? (
+        {!isAuthenticated ? (
+          activePage === 'register' ? (
+            <RegisterPage onSwitchToLogin={() => setActivePage('login')} />
+          ) : (
+            <LoginPage onSwitchToRegister={() => setActivePage('register')} />
+          )
+        ) : activePage === 'dashboard' ? (
           <Dashboard
             documents={documents}
             loading={docsLoading}
@@ -103,5 +137,13 @@ export default function App() {
         )}
       </main>
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }

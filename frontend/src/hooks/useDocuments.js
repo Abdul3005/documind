@@ -1,13 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
 import { fetchDocuments, uploadDocument, deleteDocument } from '../services/api.js';
 
-export function useDocuments() {
+export function useDocuments(enabled = true) {
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState(null);
 
   const loadDocuments = useCallback(async () => {
+    if (!enabled) return;
+
     setLoading(true);
     setError(null);
     try {
@@ -21,11 +23,17 @@ export function useDocuments() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [enabled]);
 
   useEffect(() => {
-    loadDocuments();
-  }, [loadDocuments]);
+    if (enabled) {
+      loadDocuments();
+    } else {
+      setDocuments([]);
+      setLoading(false);
+      setError(null);
+    }
+  }, [enabled, loadDocuments]);
 
   const handleUpload = async (file) => {
     setIsUploading(true);

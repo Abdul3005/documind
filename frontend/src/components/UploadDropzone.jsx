@@ -21,6 +21,10 @@ export default function UploadDropzone({ onUpload, isUploading = false }) {
     setDragActive(false);
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const file = e.dataTransfer.files[0];
+      if (file.size > 50 * 1024 * 1024) {
+        alert('File is too large. Maximum allowed size is 50 MB.');
+        return;
+      }
       setSelectedFile(file);
       if (onUpload) onUpload(file);
     }
@@ -30,6 +34,10 @@ export default function UploadDropzone({ onUpload, isUploading = false }) {
     e.preventDefault();
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
+      if (file.size > 50 * 1024 * 1024) {
+        alert('File is too large. Maximum allowed size is 50 MB.');
+        return;
+      }
       setSelectedFile(file);
       if (onUpload) onUpload(file);
     }
@@ -64,13 +72,13 @@ export default function UploadDropzone({ onUpload, isUploading = false }) {
         {dragActive ? 'Drop your document here' : 'Click or Drag & Drop Document'}
       </h4>
       <p className="text-xs text-slate-400 mb-4">
-        Supports PDF documents, JPG, or PNG images (Max 10MB)
+        Supports PDF documents, JPG, or PNG images (Max 50MB, PDF max 3000 pages)
       </p>
 
       <div className="flex items-center space-x-4 text-xs text-slate-400 bg-slate-800/60 px-4 py-2 rounded-xl border border-slate-700/50">
         <span className="flex items-center space-x-1">
           <FileText className="w-3.5 h-3.5 text-indigo-400" />
-          <span>PDF Documents</span>
+          <span>PDF Documents (Max 3000 pages)</span>
         </span>
         <span className="text-slate-600">•</span>
         <span className="flex items-center space-x-1">

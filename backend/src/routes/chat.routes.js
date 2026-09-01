@@ -1,4 +1,5 @@
 import express from 'express';
+import { protect } from '../middleware/auth.middleware.js';
 import {
   sendMessage,
   getMessages,
@@ -6,6 +7,9 @@ import {
 } from '../controllers/chat.controller.js';
 
 const router = express.Router();
+
+// Protect all chat & summary endpoints
+router.use(protect);
 
 // Chat & Summary Routes
 router.post('/:id/messages', sendMessage);

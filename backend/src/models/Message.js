@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 
 /**
  * Message Schema
- * Represents a single chat message associated with a specific Document.
+ * Represents a single chat message associated with a specific Document and User.
  */
 const messageSchema = new mongoose.Schema(
   {
@@ -10,6 +10,12 @@ const messageSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Document',
       required: [true, 'Document reference is required'],
+      index: true,
+    },
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: [true, 'User reference is required'],
       index: true,
     },
     role: {
@@ -27,8 +33,8 @@ const messageSchema = new mongoose.Schema(
   }
 );
 
-// Compound index for efficient chronological query per document
-messageSchema.index({ documentId: 1, createdAt: 1 });
+// Compound index for efficient chronological query per document and user
+messageSchema.index({ documentId: 1, userId: 1, createdAt: 1 });
 
 const Message = mongoose.model('Message', messageSchema);
 

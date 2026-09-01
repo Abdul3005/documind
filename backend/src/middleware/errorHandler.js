@@ -9,8 +9,8 @@ export const errorHandler = (err, req, res, next) => {
   // Handle Multer specific upload errors
   if (err.name === 'MulterError') {
     if (err.code === 'LIMIT_FILE_SIZE') {
-      statusCode = 413; // Payload Too Large per MASTER_PLAN.md Section 10
-      message = 'File size exceeds the maximum limit of 10MB.';
+      statusCode = 413; // Payload Too Large
+      message = 'File is too large. Maximum allowed size is 50 MB.';
     } else {
       statusCode = 400;
       message = `Upload error: ${err.message}`;
