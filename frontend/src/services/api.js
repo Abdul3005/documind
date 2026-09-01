@@ -82,6 +82,7 @@ export const uploadDocument = async (file, onUploadProgress) => {
       'Content-Type': 'multipart/form-data',
     },
     onUploadProgress,
+    timeout: 180000,
   });
   return response.data; // { success: true, document }
 };
@@ -115,7 +116,7 @@ export const sendMessage = async (documentId, content) => {
 };
 
 export const generateDocumentSummary = async (documentId) => {
-  const response = await api.post(`/documents/${documentId}/summarize`);
+  const response = await api.post(`/documents/${documentId}/summarize`, {}, { timeout: 120000 });
   return response.data; // { success: true, summary, cached }
 };
 

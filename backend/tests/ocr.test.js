@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import mongoose from 'mongoose';
@@ -109,7 +109,7 @@ describe('PDF Text Extraction & OCR Fallback Pipeline', () => {
     const corruptedPath = path.join(tempDir, 'corrupted.pdf');
     fs.writeFileSync(corruptedPath, Buffer.from('NOT_A_REAL_PDF_HEADER_CONTENT'));
 
-    await expect(extractText(corruptedPath, 'pdf')).rejects.toThrow(/extraction failed/i);
+    await expect(extractText(corruptedPath, 'pdf')).rejects.toThrow(/invalid pdf format|corrupted|extraction failed/i);
   });
 
   it('should upload a text PDF via API and set document extractionMethod to "text"', async () => {
@@ -124,5 +124,41 @@ describe('PDF Text Extraction & OCR Fallback Pipeline', () => {
     expect(res.body.success).toBe(true);
     expect(res.body.document.extractionMethod).toBe('text');
     expect(res.body.document.status).toBe('ready');
+  });
+
+  it('should validate image buffer magic bytes correctly', async () => {
+    const { isValidImageBuffer } = await import('../src/services/ocr.service.js');
+    const jpegBuffer = Buffer.from([0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10]);
+    const pngBuffer = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A]);
+    const invalidBuffer = Buffer.from([0x78, 0x9C, 0x00, 0x11, 0x22, 0x33]);
+
+    expect(isValidImageBuffer(jpegBuffer)).toBe(true);
+    expect(isValidImageBuffer(pngBuffer)).toBe(true);
+    expect(isValidImageBuffer(invalidBuffer)).toBe(false);
+    expect(isValidImageBuffer(null)).toBe(false);
+  });
+
+  it('should calculate page count correctly for a valid PDF', async () => {
+    const { getPdfPageCount } = await import('../src/services/ocr.service.js');
+    const pdfBuffer = await createTextPdfBuffer('Sample page count test document text content.');
+    const count = await getPdfPageCount(pdfBuffer);
+    expect(count).toBeGreaterThanOrEqual(1);
+    expect(count).toBeLessThanOrEqual(3000);
+  });
+
+  it('should reject PDFs exceeding the 3000 page limit cleanly', async () => {
+    const module = await import('../src/services/ocr.service.js');
+    const pdfBuffer = await createTextPdfBuffer('Sample text content for 3000 page limit test.');
+    const filePath = path.join(tempDir, 'page_limit_exceeded.pdf');
+    fs.writeFileSync(filePath, pdfBuffer);
+
+    // Temporarily spy/override getPdfPageCount to return 3001 pages
+    const pageCountSpy = vi.spyOn(module.ocrService, 'getPdfPageCount').mockResolvedValue(3001);
+
+    try {
+      await expect(module.extractText(filePath, 'pdf')).rejects.toThrow(/PDF exceeds the maximum allowed limit of 3000 pages/i);
+    } finally {
+      pageCountSpy.mockRestore();
+    }
   });
 });

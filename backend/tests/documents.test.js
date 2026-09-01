@@ -170,4 +170,47 @@ describe('Document Authorization & Ownership Isolation', () => {
     const messagesInDb = await Message.find({ documentId: docAId });
     expect(messagesInDb.length).toBe(0);
   });
+
+  describe('Edge Cases & Validation Hardening', () => {
+    it('should return error when querying document with malformed ObjectId', async () => {
+      const res = await request(app)
+        .get('/api/documents/invalid_malformed_id_123')
+        .set('Authorization', `Bearer ${tokenA}`);
+
+      expect(res.status).toBeGreaterThanOrEqual(400);
+      expect(res.body.success).toBe(false);
+    });
+
+    it('should return 404 when querying a valid but non-existent ObjectId', async () => {
+      const nonExistentId = new mongoose.Types.ObjectId().toString();
+      const res = await request(app)
+        .get(`/api/documents/${nonExistentId}`)
+        .set('Authorization', `Bearer ${tokenA}`);
+
+      expect(res.status).toBe(404);
+      expect(res.body.success).toBe(false);
+    });
+
+    it('should reject file upload with unsupported file extension', async () => {
+      const res = await request(app)
+        .post('/api/documents/upload')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .attach('file', Buffer.from('console.log("script");'), 'malicious.exe');
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error).toMatch(/Unsupported file type/i);
+    });
+
+    it('should reject file upload when file signature does not match PDF magic bytes', async () => {
+      const res = await request(app)
+        .post('/api/documents/upload')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .attach('file', Buffer.from('THIS_IS_NOT_A_REAL_PDF_MAGIC_BYTES_HEADER'), 'fake.pdf');
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error).toMatch(/signature does not match/i);
+    });
+  });
 });

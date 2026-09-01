@@ -68,7 +68,7 @@ export default function Navbar({ activePage = 'dashboard', onNavigate }) {
 
                 <div className="flex items-center space-x-2 text-xs text-slate-400">
                   <Cpu className={`w-3.5 h-3.5 ${isOnline ? 'text-indigo-400' : 'text-slate-500'}`} />
-                  <span>{isOnline ? 'Gemini AI Online' : 'AI Offline'}</span>
+                  <span>{isOnline ? 'Local AI Online' : 'AI Offline'}</span>
                 </div>
               </div>
 

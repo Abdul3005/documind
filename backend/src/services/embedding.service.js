@@ -1,4 +1,5 @@
 import { pipeline } from '@xenova/transformers';
+import { EMBEDDING_BATCH_SIZE } from '../config/limits.js';
 
 /**
  * Service for generating text embeddings locally using ONNX Transformers.js (Xenova/bge-base-en-v1.5).
@@ -94,20 +95,25 @@ export const generateEmbedding = async (text) => {
 };
 
 /**
- * Generates embeddings for an array of text chunks.
+ * Generates embeddings for an array of text chunks safely in bounded batches.
  * 
  * @param {string[]} texts - Array of string chunks to embed.
+ * @param {number} batchSize - Number of chunks per batch execution.
  * @returns {Promise<Array<number[]>>} Array of embedding vectors.
  */
-export const generateBatchEmbeddings = async (texts) => {
+export const generateBatchEmbeddings = async (texts, batchSize = EMBEDDING_BATCH_SIZE) => {
   if (!Array.isArray(texts) || texts.length === 0) {
     return [];
   }
 
-  // Process chunk embeddings using the shared singleton local model pipeline
-  const embeddings = await Promise.all(
-    texts.map((text) => generateEmbedding(text))
-  );
+  const results = [];
+  for (let i = 0; i < texts.length; i += batchSize) {
+    const batch = texts.slice(i, i + batchSize);
+    const batchEmbeddings = await Promise.all(
+      batch.map((text) => generateEmbedding(text))
+    );
+    results.push(...batchEmbeddings);
+  }
 
-  return embeddings;
+  return results;
 };
