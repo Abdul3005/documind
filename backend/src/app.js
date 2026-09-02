@@ -10,9 +10,10 @@ import { errorHandler } from './middleware/errorHandler.js';
 dotenv.config();
 
 const app = express();
+app.set("trust proxy", 1);
 
 // Base Middleware
-const allowedOrigins = process.env.CORS_ORIGIN 
+const allowedOrigins = process.env.CORS_ORIGIN
   ? [process.env.CORS_ORIGIN, 'http://localhost:5173', 'http://localhost:3000']
   : '*';
 
