@@ -5,8 +5,8 @@ const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 // Document Summarization
 export const generateSummary = async (text) => {
   try {
-    // Groq token limit safety ke liye text trim karein
-    const trimmedText = text.length > 15000 ? text.substring(0, 15000) : text;
+    const stringText = typeof text === 'string' ? text : JSON.stringify(text || "");
+    const trimmedText = stringText.length > 15000 ? stringText.substring(0, 15000) : stringText;
 
     const response = await groq.chat.completions.create({
       messages: [
@@ -30,8 +30,9 @@ export const generateSummary = async (text) => {
 // Document Q&A (Question Answering)
 export const generateAnswer = async (prompt) => {
   try {
-    // Large context safety
-    const safePrompt = prompt.length > 15000 ? prompt.substring(0, 15000) : prompt;
+    // Force prompt to be a string
+    const stringPrompt = typeof prompt === 'string' ? prompt : JSON.stringify(prompt || "");
+    const safePrompt = stringPrompt.length > 15000 ? stringPrompt.substring(0, 15000) : stringPrompt;
 
     const response = await groq.chat.completions.create({
       messages: [{ role: "user", content: safePrompt }],
