@@ -39,6 +39,8 @@ export const extractImagesFromPdf = async (pdfBuffer) => {
   try {
     const pdfDoc = await PDFDocument.load(pdfBuffer, { ignoreEncryption: true });
     const images = [];
+    let accumulatedBytes = 0;
+    const MAX_ACCUMULATED_IMAGE_BYTES = 40 * 1024 * 1024; // 40 MB cap for total decompressed image buffers in RAM
 
     const indirectObjects = pdfDoc.context.enumerateIndirectObjects();
     for (const [ref, obj] of indirectObjects) {
@@ -65,6 +67,11 @@ export const extractImagesFromPdf = async (pdfBuffer) => {
 
           if (isValidImageBuffer(imageBuffer)) {
             images.push(imageBuffer);
+            accumulatedBytes += imageBuffer.length;
+            if (accumulatedBytes >= MAX_ACCUMULATED_IMAGE_BYTES || images.length >= 10) {
+              console.warn('[OCR Service Memory Safety] Reached maximum image buffer cap for OCR fallback.');
+              break;
+            }
           } else {
             console.warn('[OCR Service Warning] Skipping non-JPEG/PNG embedded PDF image stream.');
           }
@@ -204,6 +211,7 @@ export const extractText = async (filePath, fileType) => {
               console.warn('[OCR Service Warning] Failed to terminate worker:', termErr.message);
             }
           }
+          images.length = 0; // Clear array references
         }
       }
 

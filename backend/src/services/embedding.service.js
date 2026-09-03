@@ -1,31 +1,24 @@
-import { pipeline } from '@xenova/transformers';
+import { HfInference } from '@huggingface/inference';
 import { EMBEDDING_BATCH_SIZE } from '../config/limits.js';
 
 /**
- * Service for generating text embeddings locally using ONNX Transformers.js (Xenova/bge-base-en-v1.5).
+ * Service for generating text embeddings using Hugging Face Cloud API (BAAI/bge-base-en-v1.5).
  * Strictly outputs 768-dimensional normalized floating point vectors matching MongoDB Atlas vector index.
  */
 
 const VECTOR_DIMENSION = 768;
-const DEFAULT_LOCAL_MODEL = 'Xenova/bge-base-en-v1.5';
 
-// Singleton instance promise for lazy feature-extraction pipeline initialization
-let extractorInstancePromise = null;
-
-/**
- * Singleton getter for the Transformers.js feature extraction pipeline.
- */
-const getExtractor = async () => {
-  if (!extractorInstancePromise) {
-    const modelName = process.env.LOCAL_EMBEDDING_MODEL || DEFAULT_LOCAL_MODEL;
-    console.log(`[Embedding Service] Initializing local ONNX feature-extraction pipeline (${modelName})...`);
-    extractorInstancePromise = pipeline('feature-extraction', modelName).catch((err) => {
-      extractorInstancePromise = null;
-      console.error('[Embedding Service Error] Failed to load local transformer model:', err.message);
-      throw err;
-    });
+// Lazy initialize Hugging Face Inference client
+let hfInstance = null;
+const getHfClient = () => {
+  if (!hfInstance) {
+    const token = process.env.HF_TOKEN;
+    if (!token && process.env.NODE_ENV === 'production') {
+      console.warn('[Embedding Service Warning] HF_TOKEN is missing in production environment variables.');
+    }
+    hfInstance = new HfInference(token);
   }
-  return await extractorInstancePromise;
+  return hfInstance;
 };
 
 /**
@@ -35,7 +28,7 @@ const getExtractor = async () => {
 export const generateMockVector = (text, dim = VECTOR_DIMENSION) => {
   const vector = new Array(dim).fill(0);
   const words = (text || '').toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/).filter(Boolean);
-  
+
   if (words.length === 0) {
     vector[0] = 1.0;
     return vector;
@@ -56,7 +49,7 @@ export const generateMockVector = (text, dim = VECTOR_DIMENSION) => {
 };
 
 /**
- * Generates a 768-dimensional embedding vector for a single string using local ONNX model (Xenova/bge-base-en-v1.5).
+ * Generates a 768-dimensional embedding vector for a single string using Hugging Face Cloud API.
  * 
  * @param {string} text - Input text to embed.
  * @returns {Promise<number[]>} Array of 768 floating point vector numbers.
@@ -75,12 +68,16 @@ export const generateEmbedding = async (text) => {
   }
 
   try {
-    const extractor = await getExtractor();
-    const output = await extractor(text || '', { pooling: 'mean', normalize: true });
-    const values = Array.from(output.data);
+    const hf = getHfClient();
+    const response = await hf.featureExtraction({
+      model: 'BAAI/bge-base-en-v1.5',
+      inputs: text || '',
+    });
+
+    const values = Array.isArray(response[0]) ? response[0] : response;
 
     if (!values || !Array.isArray(values) || values.length === 0) {
-      throw new Error('Invalid embedding response format from local transformer pipeline.');
+      throw new Error('Invalid embedding response format from Hugging Face API.');
     }
 
     if (values.length !== VECTOR_DIMENSION) {
@@ -89,7 +86,7 @@ export const generateEmbedding = async (text) => {
 
     return values;
   } catch (error) {
-    console.error('[Embedding Service Error]: Local embedding generation failed:', error.message);
+    console.error('[Embedding Service Error]: Cloud embedding generation failed:', error.message);
     throw error;
   }
 };
@@ -116,4 +113,4 @@ export const generateBatchEmbeddings = async (texts, batchSize = EMBEDDING_BATCH
   }
 
   return results;
-};
+}

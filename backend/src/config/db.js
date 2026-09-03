@@ -6,12 +6,14 @@ import dns from 'dns';
  */
 export const connectDB = async () => {
   try {
-    // Ensure Node's DNS resolver can query MongoDB Atlas SRV records reliably
-    // even if local router DNS proxy drops or refuses SRV queries.
-    try {
-      dns.setServers(['8.8.8.8', '1.1.1.1', '8.8.4.4']);
-    } catch (dnsErr) {
-      // Fallback if setServers fails in custom environments
+    // Only set custom DNS servers in local development if explicitly requested,
+    // avoiding breaking native cloud container (Render) DNS proxies.
+    if (process.env.NODE_ENV !== 'production' && process.env.CUSTOM_DNS === 'true') {
+      try {
+        dns.setServers(['8.8.8.8', '1.1.1.1', '8.8.4.4']);
+      } catch (dnsErr) {
+        // Fallback if setServers fails in custom environments
+      }
     }
 
     const conn = await mongoose.connect(process.env.MONGODB_URI);

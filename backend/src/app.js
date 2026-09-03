@@ -13,12 +13,26 @@ const app = express();
 app.set("trust proxy", 1);
 
 // Base Middleware
-const allowedOrigins = process.env.CORS_ORIGIN
-  ? [process.env.CORS_ORIGIN, 'http://localhost:5173', 'http://localhost:3000']
-  : '*';
+const originSetting = process.env.CORS_ORIGIN;
+const allowedOrigins = originSetting
+  ? originSetting.split(',').map((o) => o.trim())
+  : ['http://localhost:5173', 'http://localhost:3000'];
 
 app.use(cors({
-  origin: allowedOrigins,
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps, curl, postman, health checks)
+    if (!origin) return callback(null, true);
+    if (
+      process.env.CORS_ORIGIN === '*' ||
+      allowedOrigins.includes('*') ||
+      allowedOrigins.includes(origin) ||
+      process.env.NODE_ENV !== 'production' ||
+      origin.endsWith('.vercel.app')
+    ) {
+      return callback(null, true);
+    }
+    return callback(new Error('CORS policy violation: Origin not allowed.'));
+  },
   credentials: true,
 }));
 
