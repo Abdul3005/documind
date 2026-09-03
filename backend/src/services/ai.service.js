@@ -15,7 +15,7 @@ export const generateSummary = async (text) => {
           content: `Please provide a clear and detailed summary of the following text:\n\n${trimmedText}`,
         },
       ],
-      model: "llama-3.1-8b-instant",
+      model: "llama-3.3-70b-versatile",
       temperature: 0.5,
       max_tokens: 1024,
     });
@@ -30,13 +30,12 @@ export const generateSummary = async (text) => {
 // Document Q&A (Question Answering)
 export const generateAnswer = async (prompt) => {
   try {
-    // Force prompt to be a string
     const stringPrompt = typeof prompt === 'string' ? prompt : JSON.stringify(prompt || "");
     const safePrompt = stringPrompt.length > 15000 ? stringPrompt.substring(0, 15000) : stringPrompt;
 
     const response = await groq.chat.completions.create({
       messages: [{ role: "user", content: safePrompt }],
-      model: "llama-3.1-8b-instant",
+      model: "llama-3.3-70b-versatile",
       temperature: 0.5,
       max_tokens: 1024,
     });
