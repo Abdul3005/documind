@@ -92,25 +92,35 @@ export const generateEmbedding = async (text) => {
 };
 
 /**
- * Generates embeddings for an array of text chunks safely in bounded batches.
+ * Generates embeddings for an array of text chunks safely in small batches.
  * 
  * @param {string[]} texts - Array of string chunks to embed.
- * @param {number} batchSize - Number of chunks per batch execution.
+ * @param {number} batchSize - Small batch size to avoid hitting API rate limits.
  * @returns {Promise<Array<number[]>>} Array of embedding vectors.
  */
-export const generateBatchEmbeddings = async (texts, batchSize = EMBEDDING_BATCH_SIZE) => {
+export const generateBatchEmbeddings = async (texts, batchSize = 5) => {
   if (!Array.isArray(texts) || texts.length === 0) {
     return [];
   }
 
   const results = [];
+
+  // Process in small controlled batches sequentially
   for (let i = 0; i < texts.length; i += batchSize) {
     const batch = texts.slice(i, i + batchSize);
+
+    // Execute small batch
     const batchEmbeddings = await Promise.all(
       batch.map((text) => generateEmbedding(text))
     );
+
     results.push(...batchEmbeddings);
+
+    // Short 200ms delay between batches to respect API limits smoothly
+    if (i + batchSize < texts.length) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
   }
 
   return results;
-}
+};
