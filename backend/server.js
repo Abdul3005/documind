@@ -1,9 +1,13 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
+import express from 'express';
+import mongoose from 'mongoose';
 import app from './src/app.js';
 import { connectDB } from './src/config/db.js';
 
 const PORT = process.env.PORT || 5000;
 
-// Connect to Database first, then launch HTTP server
 const startServer = async () => {
   await connectDB();
   app.listen(PORT, () => {
@@ -11,4 +15,4 @@ const startServer = async () => {
   });
 };
 
-startServer();
+startServer()
