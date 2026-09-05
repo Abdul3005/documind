@@ -66,9 +66,9 @@ export const extractImagesFromPdf = async (pdfBuffer) => {
           }
 
           if (isValidImageBuffer(imageBuffer)) {
-            // Filter out tiny icon graphics or divider lines (e.g., 2x36 divider line in exam papers)
-            // Genuine document page scans are typically > 8KB
-            if (imageBuffer.length >= 8192) {
+            // Filter out watermark banners, icons, stamps, and small divider lines
+            // Genuine document page scans are typically > 25KB (camera scans are usually 200KB - 800KB)
+            if (imageBuffer.length >= 25000) {
               images.push(imageBuffer);
               accumulatedBytes += imageBuffer.length;
               if (accumulatedBytes >= MAX_ACCUMULATED_IMAGE_BYTES || images.length >= MAX_OCR_PAGES) {
@@ -76,7 +76,7 @@ export const extractImagesFromPdf = async (pdfBuffer) => {
                 break;
               }
             } else {
-              console.log(`[OCR Service Optimization] Skipped small non-page graphic stream (${imageBuffer.length} bytes).`);
+              console.log(`[OCR Service Optimization] Skipped small non-page graphic/watermark stream (${imageBuffer.length} bytes).`);
             }
           } else {
             console.warn('[OCR Service Warning] Skipping non-JPEG/PNG embedded PDF image stream.');

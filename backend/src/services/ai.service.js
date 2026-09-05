@@ -132,7 +132,11 @@ const getGroqClient = () => {
   const key = process.env.GROQ_API_KEY || (process.env.LLM_API_KEY?.startsWith('gsk_') ? process.env.LLM_API_KEY : null);
   if (!key) return null;
   if (!groqClient) {
-    groqClient = new Groq({ apiKey: key });
+    groqClient = new Groq({
+      apiKey: key,
+      timeout: 10000, // 10s timeout to prevent request hanging
+      maxRetries: 1,
+    });
   }
   return groqClient;
 };
@@ -160,6 +164,8 @@ const getOpenAiClient = () => {
       openAiClient = new OpenAI({
         apiKey: key,
         baseURL: baseURL || undefined,
+        timeout: 10000, // 10s timeout to prevent request hanging
+        maxRetries: 1,
       });
     } catch (e) {
       console.warn('[AI Service Warning] Failed to instantiate OpenAI client:', e.message);
@@ -181,7 +187,10 @@ const callGroq = async (prompt, preferredModel = 'llama-3.1-8b-instant') => {
     preferredModel,
     'llama-3.1-8b-instant',
     'llama-3.3-70b-versatile',
-    'mixtral-8x7b-32768',
+    'llama3-8b-8192',
+    'llama3-70b-8192',
+    'gemma2-9b-it',
+    'openai/gpt-oss-20b',
   ].filter(Boolean);
 
   // De-duplicate candidate models preserving order
@@ -201,8 +210,18 @@ const callGroq = async (prompt, preferredModel = 'llama-3.1-8b-instant') => {
       if (answer) return answer;
     } catch (err) {
       lastError = err;
-      if (err.status === 404 || err.code === 'model_not_found' || err.message?.includes('does not exist')) {
-        console.warn(`[AI Service Warning] Groq model ${model} not available on account, attempting fallback...`);
+      const msg = (err.message || '').toLowerCase();
+      const isModelError =
+        err.status === 404 ||
+        err.status === 400 ||
+        err.code === 'model_not_found' ||
+        msg.includes('does not exist') ||
+        msg.includes('decommissioned') ||
+        msg.includes('not available') ||
+        msg.includes('deprecated');
+
+      if (isModelError) {
+        console.warn(`[AI Service Warning] Groq model ${model} unavailable (${err.message}), attempting fallback...`);
         continue;
       }
       throw err;
@@ -339,9 +358,10 @@ export const generateAnswer = async (input) => {
     const { retrievedChunks = [], documentText = '', conversationHistory = [], question: q = '' } = input;
     question = q;
     fallbackContext =
-      Array.isArray(retrievedChunks) && retrievedChunks.length > 0
+      documentText ||
+      (Array.isArray(retrievedChunks) && retrievedChunks.length > 0
         ? retrievedChunks.map((c) => c.text).join('\n')
-        : documentText;
+        : '');
     prompt = buildPrompt({ retrievedChunks, documentText, conversationHistory, question });
   } else {
     prompt = typeof input === 'string' ? input : JSON.stringify(input || '');

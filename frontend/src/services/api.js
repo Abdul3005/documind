@@ -111,7 +111,7 @@ export const fetchMessages = async (documentId) => {
 };
 
 export const sendMessage = async (documentId, content) => {
-  const response = await api.post(`/documents/${documentId}/messages`, { content });
+  const response = await api.post(`/documents/${documentId}/messages`, { content }, { timeout: 90000 });
   return response.data; // { success: true, userMessage, assistantMessage: { id, role, content, sources, createdAt } }
 };
 
