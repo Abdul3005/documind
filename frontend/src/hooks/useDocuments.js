@@ -45,8 +45,10 @@ export function useDocuments(enabled = true) {
         return data.document;
       }
     } catch (err) {
-      console.error('[useDocuments] Upload failed:', err);
-      const msg = err.response?.data?.error || err.message || 'Upload failed.';
+      let msg = err.response?.data?.error || err.message || 'Upload failed.';
+      if (msg.includes('timeout') || err.code === 'ECONNABORTED') {
+        msg = 'Upload processing timed out. For large scanned PDFs, text extraction or OCR took too long. Please try a file with fewer scanned pages or native text.';
+      }
       setError(msg);
       throw new Error(msg);
     } finally {

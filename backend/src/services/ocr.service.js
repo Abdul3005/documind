@@ -3,7 +3,7 @@ import zlib from 'zlib';
 import pdfParse from 'pdf-parse';
 import { createWorker } from 'tesseract.js';
 import { PDFDocument, PDFName, PDFRawStream } from 'pdf-lib';
-import { MAX_PDF_PAGES, OCR_PAGE_TIMEOUT_MS, OCR_BATCH_SIZE } from '../config/limits.js';
+import { MAX_PDF_PAGES, OCR_PAGE_TIMEOUT_MS, OCR_BATCH_SIZE, MAX_OCR_PAGES, MAX_TOTAL_OCR_TIMEOUT_MS } from '../config/limits.js';
 
 /**
  * Validates whether a buffer contains standard JPEG or PNG magic bytes.
@@ -66,11 +66,17 @@ export const extractImagesFromPdf = async (pdfBuffer) => {
           }
 
           if (isValidImageBuffer(imageBuffer)) {
-            images.push(imageBuffer);
-            accumulatedBytes += imageBuffer.length;
-            if (accumulatedBytes >= MAX_ACCUMULATED_IMAGE_BYTES || images.length >= 10) {
-              console.warn('[OCR Service Memory Safety] Reached maximum image buffer cap for OCR fallback.');
-              break;
+            // Filter out tiny icon graphics or divider lines (e.g., 2x36 divider line in exam papers)
+            // Genuine document page scans are typically > 8KB
+            if (imageBuffer.length >= 8192) {
+              images.push(imageBuffer);
+              accumulatedBytes += imageBuffer.length;
+              if (accumulatedBytes >= MAX_ACCUMULATED_IMAGE_BYTES || images.length >= MAX_OCR_PAGES) {
+                console.log(`[OCR Service Memory Safety] Reached maximum image buffer or page cap (${images.length} images).`);
+                break;
+              }
+            } else {
+              console.log(`[OCR Service Optimization] Skipped small non-page graphic stream (${imageBuffer.length} bytes).`);
             }
           } else {
             console.warn('[OCR Service Warning] Skipping non-JPEG/PNG embedded PDF image stream.');
@@ -180,23 +186,49 @@ export const extractText = async (filePath, fileType) => {
       let ocrText = '';
 
       if (images.length > 0) {
-        let worker;
+        let worker = null;
+        const ocrStartTime = Date.now();
+
         try {
           worker = await createWorker('eng');
           for (let i = 0; i < images.length; i++) {
+            const elapsed = Date.now() - ocrStartTime;
+            if (elapsed >= MAX_TOTAL_OCR_TIMEOUT_MS) {
+              console.warn(`[OCR Service Budget] Time budget (${MAX_TOTAL_OCR_TIMEOUT_MS}ms) reached after ${i} pages. Returning extracted text so far.`);
+              break;
+            }
+
             const imgBuffer = images[i];
             if (!isValidImageBuffer(imgBuffer)) {
               images[i] = null;
               continue;
             }
 
+            const remainingBudget = Math.max(4000, MAX_TOTAL_OCR_TIMEOUT_MS - (Date.now() - ocrStartTime));
+            const pageTimeout = Math.min(OCR_PAGE_TIMEOUT_MS, remainingBudget);
+
             try {
-              const { data: { text } } = await recognizeWithTimeout(worker, imgBuffer, OCR_PAGE_TIMEOUT_MS);
+              const { data: { text } } = await recognizeWithTimeout(worker, imgBuffer, pageTimeout);
               if (text && text.trim()) {
-                ocrText += (ocrText ? '\n\n' : '') + text.trim();
+                ocrText += (ocrText ? '\n\n' : '') + `[Page ${i + 1}]\n` + text.trim();
               }
             } catch (imgOcrErr) {
               console.warn(`[OCR Service Warning] Failed to OCR page image ${i + 1}: ${imgOcrErr.message}`);
+              // Terminate hung worker cleanly
+              try {
+                await worker.terminate();
+              } catch (tErr) {}
+              worker = null;
+              // Re-create worker if budget allows and more images exist
+              if (Date.now() - ocrStartTime < MAX_TOTAL_OCR_TIMEOUT_MS - 8000 && i + 1 < images.length) {
+                try {
+                  worker = await createWorker('eng');
+                } catch (reErr) {
+                  break;
+                }
+              } else {
+                break;
+              }
             } finally {
               images[i] = null; // Explicitly release memory reference
             }
@@ -216,7 +248,7 @@ export const extractText = async (filePath, fileType) => {
       }
 
       // Return OCR extraction result with extractionMethod: 'ocr'
-      const finalOcrResult = ocrText.trim() || textFromPdf || '[Scanned PDF] No readable text found via OCR.';
+      const finalOcrResult = ocrText.trim() || textFromPdf || '[Scanned PDF] Scanned document processed. No high-confidence text detected via OCR.';
 
       return {
         extractedText: finalOcrResult,

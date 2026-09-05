@@ -4,7 +4,7 @@ import Document from '../models/Document.js';
 import Message from '../models/Message.js';
 import { extractText } from './ocr.service.js';
 import { chunkText } from './chunking.service.js';
-import { generateBatchEmbeddings } from './embedding.service.js';
+import { generateBatchEmbeddings, generateMockVector } from './embedding.service.js';
 
 /**
  * Service to process document upload, run OCR/PDF text extraction, chunking, RAG embeddings, and manage Document records scoped to a specific User.
@@ -45,12 +45,18 @@ export const createDocumentRecord = async (file, userId) => {
       const rawChunks = chunkText(extractedText, 800, 150);
       if (rawChunks.length > 0) {
         const chunkTexts = rawChunks.map((c) => c.text);
-        const embeddings = await generateBatchEmbeddings(chunkTexts);
+        let embeddings = [];
+        try {
+          embeddings = await generateBatchEmbeddings(chunkTexts);
+        } catch (embErr) {
+          console.warn('[Document Service] Batch embedding generation warning, using fallback vectors:', embErr.message);
+          embeddings = chunkTexts.map((text) => generateMockVector(text));
+        }
         
         document.chunks = rawChunks.map((c, i) => ({
           index: c.index,
           text: c.text,
-          embedding: embeddings[i] || [],
+          embedding: embeddings[i] || generateMockVector(c.text),
         }));
       }
     }

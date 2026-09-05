@@ -82,7 +82,7 @@ export const uploadDocument = async (file, onUploadProgress) => {
       'Content-Type': 'multipart/form-data',
     },
     onUploadProgress,
-    timeout: 180000,
+    timeout: 300000,
   });
   return response.data; // { success: true, document }
 };
