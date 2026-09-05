@@ -86,7 +86,7 @@ export const generateEmbedding = async (text) => {
 
     return values;
   } catch (error) {
-    console.warn('[Embedding Service Error]: Cloud embedding generation failed, using fallback vector:', error.message);
+    console.info('[Embedding Service] Cloud provider unavailable (%s), using normalized fallback vector.', error.message);
     if (apiKey === 'invalid_real_api_key_123') {
       throw error;
     }

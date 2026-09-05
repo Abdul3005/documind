@@ -113,10 +113,66 @@ const recognizeWithTimeout = (worker, imageBuffer, timeoutMs = OCR_PAGE_TIMEOUT_
   });
 };
 
+/**
+ * Attempt fast Cloud Vision OCR using Gemini 1.5 Flash (if API key available).
+ * Takes ~1.5s per page, consumes 0MB container RAM, and handles handwriting & math.
+ */
+export const recognizeWithGeminiVision = async (imageBuffer) => {
+  const key =
+    process.env.GEMINI_API_KEY ||
+    (process.env.LLM_API_KEY && !process.env.LLM_API_KEY.startsWith('gsk_') && process.env.LLM_API_KEY !== 'mock_key_for_dev'
+      ? process.env.LLM_API_KEY
+      : null);
+
+  if (!key) return null;
+
+  try {
+    const base64Image = imageBuffer.toString('base64');
+    const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
+    const url = `${endpoint}?key=${key}`;
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(15000),
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              {
+                text: 'Transcribe all text from this scanned document page verbatim. Maintain headings, questions, and structure accurately. Output ONLY the transcribed document text, with zero conversational commentary.',
+              },
+              {
+                inlineData: {
+                  mimeType: 'image/jpeg',
+                  data: base64Image,
+                },
+              },
+            ],
+          },
+        ],
+      }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      const transcribed = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+      if (transcribed && transcribed.length > 25) {
+        console.log(`[OCR Service] Gemini Vision successfully transcribed ${transcribed.length} characters.`);
+        return transcribed;
+      }
+    }
+  } catch (err) {
+    console.warn(`[OCR Service Warning] Gemini Vision OCR skipped: ${err.message}`);
+  }
+  return null;
+};
+
 export const ocrService = {
   isValidImageBuffer,
   getPdfPageCount,
   extractImagesFromPdf,
+  recognizeWithGeminiVision,
   extractText: null, // assigned below
 };
 
@@ -188,9 +244,15 @@ export const extractText = async (filePath, fileType) => {
       if (images.length > 0) {
         let worker = null;
         const ocrStartTime = Date.now();
+        const hasGeminiKey =
+          Boolean(process.env.GEMINI_API_KEY) ||
+          Boolean(process.env.LLM_API_KEY && !process.env.LLM_API_KEY.startsWith('gsk_') && process.env.LLM_API_KEY !== 'mock_key_for_dev');
 
         try {
-          worker = await createWorker('eng');
+          if (!hasGeminiKey) {
+            worker = await createWorker('eng');
+          }
+
           for (let i = 0; i < images.length; i++) {
             const elapsed = Date.now() - ocrStartTime;
             if (elapsed >= MAX_TOTAL_OCR_TIMEOUT_MS) {
@@ -204,37 +266,45 @@ export const extractText = async (filePath, fileType) => {
               continue;
             }
 
-            const remainingBudget = Math.max(4000, MAX_TOTAL_OCR_TIMEOUT_MS - (Date.now() - ocrStartTime));
-            const pageTimeout = Math.min(OCR_PAGE_TIMEOUT_MS, remainingBudget);
+            // 1. Attempt high-speed Gemini Vision OCR first
+            let pageText = null;
+            if (hasGeminiKey) {
+              const visionFn = ocrService.recognizeWithGeminiVision || recognizeWithGeminiVision;
+              pageText = await visionFn(imgBuffer);
+            }
 
-            try {
-              const { data: { text } } = await recognizeWithTimeout(worker, imgBuffer, pageTimeout);
-              if (text && text.trim()) {
-                ocrText += (ocrText ? '\n\n' : '') + `[Page ${i + 1}]\n` + text.trim();
-              }
-            } catch (imgOcrErr) {
-              console.warn(`[OCR Service Warning] Failed to OCR page image ${i + 1}: ${imgOcrErr.message}`);
-              // Terminate hung worker cleanly
-              try {
-                await worker.terminate();
-              } catch (tErr) {}
-              worker = null;
-              // Re-create worker if budget allows and more images exist
-              if (Date.now() - ocrStartTime < MAX_TOTAL_OCR_TIMEOUT_MS - 8000 && i + 1 < images.length) {
+            // 2. Fall back to Tesseract OCR if Vision was unavailable or returned no text
+            if (!pageText) {
+              if (!worker) {
                 try {
                   worker = await createWorker('eng');
-                } catch (reErr) {
+                } catch (wErr) {
+                  console.error('[OCR Service Error] Tesseract worker creation failed:', wErr.message);
                   break;
                 }
-              } else {
-                break;
               }
-            } finally {
-              images[i] = null; // Explicitly release memory reference
+
+              const remainingBudget = Math.max(4000, MAX_TOTAL_OCR_TIMEOUT_MS - (Date.now() - ocrStartTime));
+              const pageTimeout = Math.min(OCR_PAGE_TIMEOUT_MS, remainingBudget);
+
+              try {
+                const { data: { text } } = await recognizeWithTimeout(worker, imgBuffer, pageTimeout);
+                pageText = text ? text.trim() : null;
+              } catch (imgOcrErr) {
+                console.warn(`[OCR Service Warning] Failed to OCR page image ${i + 1}: ${imgOcrErr.message}`);
+                try { await worker.terminate(); } catch (tErr) {}
+                worker = null;
+              }
             }
+
+            if (pageText && pageText.trim()) {
+              ocrText += (ocrText ? '\n\n' : '') + `[Page ${i + 1}]\n` + pageText.trim();
+            }
+
+            images[i] = null; // Explicitly release memory reference
           }
         } catch (workerErr) {
-          console.error('[OCR Service Error] Tesseract worker initialization failed:', workerErr.message);
+          console.error('[OCR Service Error] OCR processing error:', workerErr.message);
         } finally {
           if (worker) {
             try {
@@ -258,16 +328,23 @@ export const extractText = async (filePath, fileType) => {
       let worker;
       let extractedText = '';
       try {
-        worker = await createWorker('eng');
         const imgBuffer = fs.readFileSync(filePath);
         if (isValidImageBuffer(imgBuffer)) {
-          const { data: { text } } = await recognizeWithTimeout(worker, imgBuffer, OCR_PAGE_TIMEOUT_MS);
-          extractedText = text ? text.trim() : '';
+          // Attempt Gemini Vision first
+          const visionFn = ocrService.recognizeWithGeminiVision || recognizeWithGeminiVision;
+          extractedText = await visionFn(imgBuffer);
+
+          // Fallback to Tesseract if Vision unavailable
+          if (!extractedText) {
+            worker = await createWorker('eng');
+            const { data: { text } } = await recognizeWithTimeout(worker, imgBuffer, OCR_PAGE_TIMEOUT_MS);
+            extractedText = text ? text.trim() : '';
+          }
         } else {
           console.warn('[OCR Service Warning] Image file signature validation failed.');
         }
       } catch (imgErr) {
-        console.error('[OCR Service Error] Tesseract image OCR failed:', imgErr.message);
+        console.error('[OCR Service Error] Image OCR failed:', imgErr.message);
       } finally {
         if (worker) {
           try {
