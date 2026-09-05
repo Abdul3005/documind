@@ -170,21 +170,46 @@ const getOpenAiClient = () => {
 };
 
 /**
- * Call Groq Cloud API
+ * Call Groq Cloud API with model fallback
  */
-const callGroq = async (prompt, modelName = 'llama-3.3-70b-versatile') => {
+const callGroq = async (prompt, preferredModel = 'llama-3.1-8b-instant') => {
   const groq = getGroqClient();
   if (!groq) throw new Error('Groq client not configured or missing GROQ_API_KEY.');
 
-  const model = process.env.GROQ_MODEL || modelName;
-  const chatCompletion = await groq.chat.completions.create({
-    messages: [{ role: 'user', content: prompt }],
-    model,
-    temperature: 0.3,
-    max_tokens: SUMMARY_MAX_TOKENS,
-  });
+  const candidateModels = [
+    process.env.GROQ_MODEL,
+    preferredModel,
+    'llama-3.1-8b-instant',
+    'llama-3.3-70b-versatile',
+    'mixtral-8x7b-32768',
+  ].filter(Boolean);
 
-  return chatCompletion.choices[0]?.message?.content?.trim();
+  // De-duplicate candidate models preserving order
+  const uniqueModels = [...new Set(candidateModels)];
+  let lastError = null;
+
+  for (const model of uniqueModels) {
+    try {
+      const chatCompletion = await groq.chat.completions.create({
+        messages: [{ role: 'user', content: prompt }],
+        model,
+        temperature: 0.3,
+        max_tokens: SUMMARY_MAX_TOKENS,
+      });
+
+      const answer = chatCompletion.choices[0]?.message?.content?.trim();
+      if (answer) return answer;
+    } catch (err) {
+      lastError = err;
+      if (err.status === 404 || err.code === 'model_not_found' || err.message?.includes('does not exist')) {
+        console.warn(`[AI Service Warning] Groq model ${model} not available on account, attempting fallback...`);
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  throw lastError || new Error('All Groq models failed.');
 };
 
 /**
