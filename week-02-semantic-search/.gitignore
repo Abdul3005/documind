@@ -1,0 +1,22 @@
+# Virtual Environment
+.venv/
+venv/
+ENV/
+
+# Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Data artifacts (optional: keep documents_10k.json if required, ignore binary embeddings if large)
+data/*.pt
+data/*.npy
+
+# Environment variables
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
