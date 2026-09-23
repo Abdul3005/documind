@@ -1,7 +1,7 @@
 import Document from '../models/Document.js';
 import Message from '../models/Message.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
-import { generateAnswer, generateSummary } from '../services/ai.service.js';
+import { generateAnswer, generateSummary, UNGROUNDED_RESPONSE } from '../services/ai.service.js';
 import { retrieveRelevantChunks } from '../services/retrieval.service.js';
 
 /**
@@ -10,6 +10,14 @@ import { retrieveRelevantChunks } from '../services/retrieval.service.js';
  * @access  Private
  */
 export const sendMessage = asyncHandler(async (req, res) => {
+  const userId = req.user?._id || req.userId;
+  if (!userId) {
+    return res.status(401).json({
+      success: false,
+      error: 'Not authorized, user ID missing.',
+    });
+  }
+
   const { id } = req.params;
   const { content } = req.body;
 
@@ -21,7 +29,7 @@ export const sendMessage = asyncHandler(async (req, res) => {
   }
 
   // 1. Find document owned by authenticated user
-  const document = await Document.findOne({ _id: id, userId: req.userId });
+  const document = await Document.findOne({ _id: id, userId });
   if (!document) {
     return res.status(404).json({
       success: false,
@@ -30,7 +38,7 @@ export const sendMessage = asyncHandler(async (req, res) => {
   }
 
   // 2. Fetch last 6 messages for context owned by authenticated user
-  const previousMessages = await Message.find({ documentId: id, userId: req.userId })
+  const previousMessages = await Message.find({ documentId: id, userId })
     .sort({ createdAt: -1 })
     .limit(6);
   
@@ -40,40 +48,67 @@ export const sendMessage = asyncHandler(async (req, res) => {
   // 3. Vector search / RAG retrieval of Top-K relevant chunks scoped to documentId and userId
   const retrievedChunks = await retrieveRelevantChunks({
     documentId: id,
-    userId: req.userId,
+    userId,
     question: content.trim(),
     topK: 3,
   });
 
-  // 4. Generate grounded AI response using retrieved chunks context
-  const assistantResponse = await generateAnswer({
-    retrievedChunks,
-    documentText: document.extractedText,
-    conversationHistory,
-    question: content.trim(),
-  });
+  const RAG_MIN_RELEVANCE_THRESHOLD = parseFloat(process.env.RAG_MIN_RELEVANCE_THRESHOLD || '0.15');
+  const maxSimilarity = retrievedChunks.length > 0
+    ? Math.max(...retrievedChunks.map((c) => (typeof c.similarity === 'number' ? c.similarity : 0)))
+    : 0;
+
+  let assistantResponse;
+  let sources = [];
+
+  // Retrieval Check Logic:
+  // If vector search returns 0 chunks or all retrieved chunks fall below the minimum relevance threshold,
+  // DO NOT call the LLM to generate an open-ended answer.
+  if (retrievedChunks.length === 0 || maxSimilarity < RAG_MIN_RELEVANCE_THRESHOLD) {
+    assistantResponse = UNGROUNDED_RESPONSE;
+    sources = [];
+  } else {
+    // 4. Generate grounded AI response using retrieved chunks context
+    assistantResponse = await generateAnswer({
+      retrievedChunks,
+      documentText: document.extractedText,
+      conversationHistory,
+      question: content.trim(),
+    });
+
+    // Guardrail: if assistant response indicates information is not in document, do not attach citation badges
+    const isUngrounded =
+      !assistantResponse ||
+      assistantResponse.trim() === UNGROUNDED_RESPONSE ||
+      assistantResponse.trim().toLowerCase().includes('not contained in the provided document');
+
+    if (isUngrounded) {
+      sources = [];
+    } else {
+      sources = retrievedChunks.map((c) => ({
+        chunkIndex: c.chunkIndex,
+        similarity: c.similarity,
+        text: c.text ? c.text.substring(0, 300) : '',
+      }));
+    }
+  }
 
   // 5. Save User Message with userId
   const userMessage = await Message.create({
     documentId: id,
-    userId: req.userId,
+    userId,
     role: 'user',
     content: content.trim(),
   });
 
-  // 6. Save Assistant Message with userId
+  // 6. Save Assistant Message with userId and source citation metadata
   const assistantMessage = await Message.create({
     documentId: id,
-    userId: req.userId,
+    userId,
     role: 'assistant',
     content: assistantResponse,
+    sources,
   });
-
-  // Format source citation metadata
-  const sources = retrievedChunks.map((c) => ({
-    chunkIndex: c.chunkIndex,
-    similarity: c.similarity,
-  }));
 
   res.status(201).json({
     success: true,
@@ -99,9 +134,17 @@ export const sendMessage = asyncHandler(async (req, res) => {
  * @access  Private
  */
 export const getMessages = asyncHandler(async (req, res) => {
+  const userId = req.user?._id || req.userId;
+  if (!userId) {
+    return res.status(401).json({
+      success: false,
+      error: 'Not authorized, user ID missing.',
+    });
+  }
+
   const { id } = req.params;
 
-  const document = await Document.findOne({ _id: id, userId: req.userId });
+  const document = await Document.findOne({ _id: id, userId });
   if (!document) {
     return res.status(404).json({
       success: false,
@@ -109,7 +152,7 @@ export const getMessages = asyncHandler(async (req, res) => {
     });
   }
 
-  const messages = await Message.find({ documentId: id, userId: req.userId }).sort({ createdAt: 1 });
+  const messages = await Message.find({ documentId: id, userId }).sort({ createdAt: 1 });
 
   res.status(200).json({
     success: true,
@@ -118,6 +161,7 @@ export const getMessages = asyncHandler(async (req, res) => {
       id: msg._id,
       role: msg.role,
       content: msg.content,
+      sources: msg.sources || [],
       createdAt: msg.createdAt,
     })),
   });
@@ -129,9 +173,17 @@ export const getMessages = asyncHandler(async (req, res) => {
  * @access  Private
  */
 export const summarizeDocument = asyncHandler(async (req, res) => {
+  const userId = req.user?._id || req.userId;
+  if (!userId) {
+    return res.status(401).json({
+      success: false,
+      error: 'Not authorized, user ID missing.',
+    });
+  }
+
   const { id } = req.params;
 
-  const document = await Document.findOne({ _id: id, userId: req.userId });
+  const document = await Document.findOne({ _id: id, userId });
   if (!document) {
     return res.status(404).json({
       success: false,
@@ -161,5 +213,37 @@ export const summarizeDocument = asyncHandler(async (req, res) => {
     success: true,
     summary: summaryText,
     cached: false,
+  });
+});
+
+/**
+ * @desc    Clear all chat messages for a document owned by authenticated user
+ * @route   DELETE /api/documents/:id/messages
+ * @access  Private
+ */
+export const clearMessages = asyncHandler(async (req, res) => {
+  const userId = req.user?._id || req.userId;
+  if (!userId) {
+    return res.status(401).json({
+      success: false,
+      error: 'Not authorized, user ID missing.',
+    });
+  }
+
+  const { id } = req.params;
+
+  const document = await Document.findOne({ _id: id, userId });
+  if (!document) {
+    return res.status(404).json({
+      success: false,
+      error: 'Document not found.',
+    });
+  }
+
+  await Message.deleteMany({ documentId: id, userId });
+
+  res.status(200).json({
+    success: true,
+    message: 'Chat history cleared successfully.',
   });
 });

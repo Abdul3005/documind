@@ -140,7 +140,7 @@ export const recognizeWithGeminiVision = async (imageBuffer) => {
           {
             parts: [
               {
-                text: 'Transcribe all text from this scanned document page verbatim. Maintain headings, questions, and structure accurately. Output ONLY the transcribed document text, with zero conversational commentary.',
+                text: 'Transcribe all text from this scanned document page verbatim. Maintain headings, questions, and structure accurately. Transcribe ONLY what is clearly visible and legible. Do NOT invent, assume, or hallucinate confidentiality levels, recipients, departments, or sections that are not explicitly present. If handwriting or math equations are partially illegible, transcribe only the readable words and clearly identified headers. Output ONLY the transcribed document text, with zero conversational commentary.',
               },
               {
                 inlineData: {

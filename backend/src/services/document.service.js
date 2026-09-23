@@ -49,13 +49,15 @@ export const createDocumentRecord = async (file, userId) => {
         try {
           embeddings = await generateBatchEmbeddings(chunkTexts);
         } catch (embErr) {
-          console.warn('[Document Service] Batch embedding generation warning, using fallback vectors:', embErr.message);
+          console.error('[Document Service Error] Batch cloud embedding generation failed:', embErr.message);
           embeddings = chunkTexts.map((text) => generateMockVector(text));
         }
         
         document.chunks = rawChunks.map((c, i) => ({
           index: c.index,
           text: c.text,
+          offsetStart: c.offsetStart ?? 0,
+          offsetEnd: c.offsetEnd ?? c.text.length,
           embedding: embeddings[i] || generateMockVector(c.text),
         }));
       }

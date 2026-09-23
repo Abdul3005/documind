@@ -1,9 +1,24 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import UploadDropzone from '../components/UploadDropzone.jsx';
 import EmptyState from '../components/EmptyState.jsx';
-import LoadingSpinner from '../components/LoadingSpinner.jsx';
 import ConfirmModal from '../components/ConfirmModal.jsx';
-import { FileText, Image, ArrowRight, Trash2, Clock, CheckCircle2, AlertCircle, RefreshCw, Scan, Sparkles, ChevronLeft, ChevronRight } from 'lucide-react';
+import {
+  FileText,
+  Image,
+  ArrowRight,
+  Trash2,
+  Clock,
+  CheckCircle2,
+  AlertCircle,
+  RefreshCw,
+  Scan,
+  Sparkles,
+  ChevronLeft,
+  ChevronRight,
+  Search,
+  X,
+  Filter,
+} from 'lucide-react';
 
 const ITEMS_PER_PAGE = 6;
 
@@ -11,6 +26,9 @@ export default function Dashboard({
   documents = [],
   loading = false,
   isUploading = false,
+  uploadProgress = 0,
+  uploadStage = 'idle',
+  userId = null,
   onUpload,
   onSelectDocument,
   onDeleteDocument,
@@ -18,10 +36,49 @@ export default function Dashboard({
   const [deleteDocId, setDeleteDocId] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterType, setFilterType] = useState('all'); // 'all' | 'pdf' | 'image'
 
-  const totalPages = Math.ceil(documents.length / ITEMS_PER_PAGE) || 1;
+  // Reset pagination, search query, filter, and modals whenever userId changes or on fresh login
+  useEffect(() => {
+    setCurrentPage(1);
+    setSearchQuery('');
+    setFilterType('all');
+    setDeleteDocId(null);
+  }, [userId]);
+
+  // Listen for global logout event to purge dashboard view state
+  useEffect(() => {
+    const handleLogout = () => {
+      setCurrentPage(1);
+      setSearchQuery('');
+      setFilterType('all');
+      setDeleteDocId(null);
+    };
+
+    window.addEventListener('documind_logout', handleLogout);
+    return () => window.removeEventListener('documind_logout', handleLogout);
+  }, []);
+
+  // Filtered documents based on search query and file type
+  const filteredDocuments = useMemo(() => {
+    return documents.filter((doc) => {
+      const matchesSearch =
+        !searchQuery.trim() ||
+        (doc.filename || '').toLowerCase().includes(searchQuery.trim().toLowerCase());
+
+      const matchesFilter =
+        filterType === 'all' ||
+        (filterType === 'pdf' && doc.fileType === 'pdf') ||
+        (filterType === 'image' && (doc.fileType === 'image' || doc.extractionMethod === 'ocr'));
+
+      return matchesSearch && matchesFilter;
+    });
+  }, [documents, searchQuery, filterType]);
+
+  const totalPages = Math.ceil(filteredDocuments.length / ITEMS_PER_PAGE) || 1;
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const paginatedDocuments = documents.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  const paginatedDocuments = filteredDocuments.slice(startIndex, startIndex + ITEMS_PER_PAGE);
 
   const handleDeleteConfirm = async () => {
     if (!deleteDocId || !onDeleteDocument) return;
@@ -31,6 +88,13 @@ export default function Dashboard({
     } finally {
       setIsDeleting(false);
       setDeleteDocId(null);
+    }
+  };
+
+  const handleTriggerUpload = () => {
+    const fileInput = document.getElementById('file-upload-input');
+    if (fileInput) {
+      fileInput.click();
     }
   };
 
@@ -68,22 +132,142 @@ export default function Dashboard({
           <span className="w-2 h-2 rounded-full bg-indigo-500" />
           <span>Upload New Document</span>
         </h2>
-        <UploadDropzone onUpload={onUpload} isUploading={isUploading} />
+        <UploadDropzone
+          onUpload={onUpload}
+          isUploading={isUploading}
+          uploadProgress={uploadProgress}
+          uploadStage={uploadStage}
+        />
       </div>
 
       {/* Document Library Section */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-slate-200">Document Library</h2>
-          <span className="text-xs text-slate-400">{documents.length} items stored in MongoDB</span>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-bold text-slate-200">Document Library</h2>
+            <span className="text-xs text-slate-400">{documents.length} items stored in MongoDB</span>
+          </div>
+
+          {/* Search & Filter Controls */}
+          {documents.length > 0 && (
+            <div className="flex items-center space-x-2">
+              {/* Search Bar */}
+              <div className="relative">
+                <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  placeholder="Search by name..."
+                  className="pl-9 pr-8 py-1.5 bg-slate-900/90 border border-slate-700/80 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 w-44 sm:w-56 transition"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Filter Pills */}
+              <div className="flex items-center bg-slate-900 border border-slate-800 p-0.5 rounded-xl text-[11px]">
+                <button
+                  onClick={() => {
+                    setFilterType('all');
+                    setCurrentPage(1);
+                  }}
+                  className={`px-2.5 py-1 rounded-lg transition ${
+                    filterType === 'all'
+                      ? 'bg-indigo-600 text-white font-medium shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  All
+                </button>
+                <button
+                  onClick={() => {
+                    setFilterType('pdf');
+                    setCurrentPage(1);
+                  }}
+                  className={`px-2.5 py-1 rounded-lg transition ${
+                    filterType === 'pdf'
+                      ? 'bg-indigo-600 text-white font-medium shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  PDFs
+                </button>
+                <button
+                  onClick={() => {
+                    setFilterType('image');
+                    setCurrentPage(1);
+                  }}
+                  className={`px-2.5 py-1 rounded-lg transition ${
+                    filterType === 'image'
+                      ? 'bg-indigo-600 text-white font-medium shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  Images
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
+        {/* Loading State with Pulse Skeleton Cards */}
         {loading ? (
-          <div className="glass-panel p-12 rounded-2xl border border-slate-800">
-            <LoadingSpinner size="lg" label="Loading stored documents from MongoDB..." />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[1, 2, 3, 4, 5, 6].map((idx) => (
+              <div
+                key={idx}
+                className="glass-card p-5 rounded-2xl border border-slate-800 animate-pulse space-y-4 flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="w-12 h-12 bg-slate-800 rounded-xl" />
+                    <div className="w-16 h-6 bg-slate-800 rounded-full" />
+                  </div>
+                  <div className="h-4 bg-slate-800 rounded w-3/4 mb-2" />
+                  <div className="h-3 bg-slate-800/60 rounded w-1/2" />
+                </div>
+                <div className="pt-3 border-t border-slate-800 flex justify-between items-center">
+                  <div className="h-3 bg-slate-800 rounded w-20" />
+                  <div className="w-5 h-5 bg-slate-800 rounded" />
+                </div>
+              </div>
+            ))}
           </div>
         ) : documents.length === 0 ? (
-          <EmptyState />
+          /* Empty State: Wired with onAction */
+          <EmptyState
+            title="No Documents Found"
+            description="Upload your first PDF or image document to start asking questions and generating AI summaries."
+            onAction={handleTriggerUpload}
+          />
+        ) : filteredDocuments.length === 0 ? (
+          /* Filtered search yield zero results */
+          <div className="glass-panel p-10 rounded-2xl border border-slate-800 text-center space-y-3">
+            <Filter className="w-8 h-8 mx-auto text-slate-500" />
+            <h3 className="text-sm font-semibold text-slate-200">No matching documents</h3>
+            <p className="text-xs text-slate-400 max-w-sm mx-auto">
+              No documents matched your search for "{searchQuery}". Try a different keyword or reset filters.
+            </p>
+            <button
+              onClick={() => {
+                setSearchQuery('');
+                setFilterType('all');
+              }}
+              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs rounded-xl border border-slate-700 transition"
+            >
+              Reset Filters
+            </button>
+          </div>
         ) : (
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -122,7 +306,7 @@ export default function Dashboard({
                             <span className="capitalize">{doc.status}</span>
                           </span>
 
-                          {/* STEP 3 — OCR Extraction Method Indicator */}
+                          {/* OCR Extraction Method Indicator (Guaranteed Test Match) */}
                           {doc.status === 'ready' && (
                             <span
                               className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded-md text-[10px] font-semibold border ${

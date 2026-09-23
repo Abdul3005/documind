@@ -120,4 +120,9 @@ export const generateDocumentSummary = async (documentId) => {
   return response.data; // { success: true, summary, cached }
 };
 
+export const clearMessagesApi = async (documentId) => {
+  const response = await api.delete(`/documents/${documentId}/messages`);
+  return response.data; // { success: true, message }
+};
+
 export default api;

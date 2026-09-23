@@ -13,6 +13,14 @@ const chunkSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    offsetStart: {
+      type: Number,
+      default: 0,
+    },
+    offsetEnd: {
+      type: Number,
+      default: 0,
+    },
     embedding: {
       type: [Number],
       required: true,

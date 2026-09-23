@@ -27,20 +27,29 @@ export const cosineSimilarity = (vecA, vecB) => {
   return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
 };
 
+export const DEFAULT_MIN_RELEVANCE_THRESHOLD = 0.15;
+
 /**
  * Retrieves the Top-K most relevant document chunks for a question.
  * Strictly scoped to documentId and userId to prevent cross-user data exposure.
- * Supports MongoDB Atlas $vectorSearch with in-memory Cosine Similarity fallback.
+ * Utilizes exact in-memory Cosine Similarity ranking over the document's embedded chunks.
  * 
  * @param {Object} options
  * @param {string} options.documentId - Target document ID.
  * @param {string} options.userId - Authenticated user ID.
  * @param {string} options.question - User query.
  * @param {number} [options.topK=3] - Number of top chunks to retrieve.
+ * @param {number} [options.minScore=0.0] - Minimum similarity threshold cutoff.
  * @returns {Promise<Array<{ chunkIndex: number, text: string, similarity: number }>>} Ranked chunks.
  */
-export const retrieveRelevantChunks = async ({ documentId, userId, question, topK = 3 }) => {
-  if (!documentId || !userId || !question) {
+export const retrieveRelevantChunks = async ({
+  documentId,
+  userId,
+  question,
+  topK = 3,
+  minScore = 0.0,
+}) => {
+  if (!documentId || !userId || !question || !question.trim()) {
     return [];
   }
 
@@ -51,58 +60,28 @@ export const retrieveRelevantChunks = async ({ documentId, userId, question, top
   }
 
   // 2. Generate embedding vector for the query
-  const queryEmbedding = await generateEmbedding(question);
+  const queryEmbedding = await generateEmbedding(question.trim());
 
-  // 3. Attempt Atlas $vectorSearch if running on Atlas with search index configured
-  try {
-    if (process.env.USE_ATLAS_VECTOR_SEARCH === 'true') {
-      const pipeline = [
-        {
-          $vectorSearch: {
-            index: 'vector_index',
-            path: 'chunks.embedding',
-            queryVector: queryEmbedding,
-            numCandidates: 20,
-            limit: topK,
-            filter: {
-              _id: document._id,
-              userId: document.userId,
-            },
-          },
-        },
-        {
-          $project: {
-            chunks: 1,
-            score: { $meta: 'vectorSearchScore' },
-          },
-        },
-      ];
-      const results = await Document.aggregate(pipeline);
-      if (results && results.length > 0 && results[0].chunks) {
-        return results[0].chunks.slice(0, topK).map((c) => ({
-          chunkIndex: c.index,
-          text: c.text,
-          similarity: results[0].score || 1.0,
-        }));
-      }
-    }
-  } catch (atlasErr) {
-    console.warn('[Retrieval Service] Atlas $vectorSearch unavailable, using in-memory cosine fallback:', atlasErr.message);
-  }
-
-  // 4. In-Memory Cosine Similarity Fallback
-  const scoredChunks = document.chunks.map((chunk) => {
-    const similarity = cosineSimilarity(queryEmbedding, chunk.embedding);
-    return {
-      chunkIndex: chunk.index,
-      text: chunk.text,
-      similarity: Number(similarity.toFixed(4)),
-    };
-  });
+  // 3. Exact In-Memory Cosine Similarity Ranking across document chunks
+  const scoredChunks = document.chunks
+    .filter((chunk) => Array.isArray(chunk.embedding) && chunk.embedding.length > 0)
+    .map((chunk) => {
+      const similarity = cosineSimilarity(queryEmbedding, chunk.embedding);
+      return {
+        chunkIndex: chunk.index,
+        text: chunk.text,
+        similarity: Number(similarity.toFixed(4)),
+      };
+    });
 
   // Sort descending by similarity score
   scoredChunks.sort((a, b) => b.similarity - a.similarity);
 
+  // 4. Enforce minimum similarity threshold cutoff when specified
+  const filteredChunks = minScore > 0
+    ? scoredChunks.filter((chunk) => chunk.similarity >= minScore)
+    : scoredChunks;
+
   // Return Top-K chunks
-  return scoredChunks.slice(0, topK);
+  return filteredChunks.slice(0, Math.max(1, topK));
 };

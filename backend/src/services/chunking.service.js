@@ -18,6 +18,14 @@ export const chunkText = (text, chunkSize = DEFAULT_CHUNK_SIZE, overlap = DEFAUL
     return [];
   }
 
+  // Validate parameters to prevent infinite loops or invalid window sliding
+  if (typeof chunkSize !== 'number' || chunkSize <= 0) {
+    chunkSize = DEFAULT_CHUNK_SIZE;
+  }
+  if (typeof overlap !== 'number' || overlap < 0 || overlap >= chunkSize) {
+    overlap = Math.floor(chunkSize * 0.2); // Default to 20% overlap if invalid or >= chunkSize
+  }
+
   const trimmedText = text.trim();
   if (trimmedText.length === 0) {
     return [];
@@ -25,7 +33,12 @@ export const chunkText = (text, chunkSize = DEFAULT_CHUNK_SIZE, overlap = DEFAUL
 
   // Short text under chunkSize fits in a single chunk
   if (trimmedText.length <= chunkSize) {
-    return [{ index: 0, text: trimmedText }];
+    return [{
+      index: 0,
+      text: trimmedText,
+      offsetStart: 0,
+      offsetEnd: trimmedText.length,
+    }];
   }
 
   const chunks = [];
@@ -48,11 +61,18 @@ export const chunkText = (text, chunkSize = DEFAULT_CHUNK_SIZE, overlap = DEFAUL
       }
     }
 
-    const chunkContent = trimmedText.slice(start, end).trim();
+    const rawSlice = trimmedText.slice(start, end);
+    const chunkContent = rawSlice.trim();
     if (chunkContent.length > 0) {
+      const relativeStart = rawSlice.indexOf(chunkContent);
+      const offsetStart = start + (relativeStart >= 0 ? relativeStart : 0);
+      const offsetEnd = offsetStart + chunkContent.length;
+
       chunks.push({
         index: chunkIndex,
         text: chunkContent,
+        offsetStart,
+        offsetEnd,
       });
       chunkIndex++;
     }
@@ -60,8 +80,9 @@ export const chunkText = (text, chunkSize = DEFAULT_CHUNK_SIZE, overlap = DEFAUL
     if (end >= trimmedText.length) {
       break;
     }
-    // Slide window forward by chunkSize - overlap
-    start = Math.max(start + 1, end - overlap);
+    // Slide window forward safely by chunkSize - overlap
+    const nextStart = end - overlap;
+    start = nextStart > start ? nextStart : start + 1;
   }
 
   return chunks;

@@ -4,6 +4,7 @@ import {
   sendMessage,
   getMessages,
   summarizeDocument,
+  clearMessages,
 } from '../controllers/chat.controller.js';
 
 const router = express.Router();
@@ -14,6 +15,7 @@ router.use(protect);
 // Chat & Summary Routes
 router.post('/:id/messages', sendMessage);
 router.get('/:id/messages', getMessages);
+router.delete('/:id/messages', clearMessages);
 router.post('/:id/summarize', summarizeDocument);
 
 export default router;

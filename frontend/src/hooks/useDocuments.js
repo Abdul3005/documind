@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { fetchDocuments, uploadDocument, deleteDocument } from '../services/api.js';
 
-export function useDocuments(enabled = true) {
+export function useDocuments(enabled = true, userId = null) {
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadStage, setUploadStage] = useState('idle'); // 'idle' | 'uploading' | 'processing' | 'indexing' | 'ready'
   const [error, setError] = useState(null);
 
   const loadDocuments = useCallback(async () => {
@@ -25,21 +27,58 @@ export function useDocuments(enabled = true) {
     }
   }, [enabled]);
 
+  // Purge document state on userId change or disable, and fetch fresh list when authenticated
   useEffect(() => {
+    setDocuments([]);
+    setError(null);
+
     if (enabled) {
       loadDocuments();
     } else {
-      setDocuments([]);
       setLoading(false);
-      setError(null);
     }
-  }, [enabled, loadDocuments]);
+  }, [enabled, userId, loadDocuments]);
+
+  // Listen for global logout event to purge cached documents in memory
+  useEffect(() => {
+    const handleLogout = () => {
+      setDocuments([]);
+      setError(null);
+      setLoading(false);
+      setIsUploading(false);
+      setUploadProgress(0);
+      setUploadStage('idle');
+    };
+
+    window.addEventListener('documind_logout', handleLogout);
+    return () => window.removeEventListener('documind_logout', handleLogout);
+  }, []);
 
   const handleUpload = async (file) => {
     setIsUploading(true);
+    setUploadProgress(0);
+    setUploadStage('uploading');
     setError(null);
+
+    let stageTimer = null;
+
     try {
-      const data = await uploadDocument(file);
+      const data = await uploadDocument(file, (progressEvent) => {
+        if (progressEvent.total) {
+          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          setUploadProgress(percentCompleted);
+          if (percentCompleted >= 100) {
+            setUploadStage('processing');
+            stageTimer = setTimeout(() => {
+              setUploadStage('indexing');
+            }, 1800);
+          }
+        }
+      });
+
+      setUploadStage('ready');
+      setUploadProgress(100);
+
       if (data.success && data.document) {
         setDocuments((prev) => [data.document, ...prev]);
         return data.document;
@@ -52,7 +91,12 @@ export function useDocuments(enabled = true) {
       setError(msg);
       throw new Error(msg);
     } finally {
+      if (stageTimer) clearTimeout(stageTimer);
       setIsUploading(false);
+      setTimeout(() => {
+        setUploadProgress(0);
+        setUploadStage('idle');
+      }, 800);
     }
   };
 
@@ -73,10 +117,13 @@ export function useDocuments(enabled = true) {
     documents,
     loading,
     isUploading,
+    uploadProgress,
+    uploadStage,
     error,
     refreshDocuments: loadDocuments,
     uploadDocument: handleUpload,
     deleteDocument: handleDelete,
+    clearDocuments: () => setDocuments([]),
     clearError: () => setError(null),
   };
 }

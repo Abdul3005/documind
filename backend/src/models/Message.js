@@ -1,5 +1,23 @@
 import mongoose from 'mongoose';
 
+const sourceCitationSchema = new mongoose.Schema(
+  {
+    chunkIndex: {
+      type: Number,
+      required: true,
+    },
+    similarity: {
+      type: Number,
+      required: true,
+    },
+    text: {
+      type: String,
+      default: '',
+    },
+  },
+  { _id: false }
+);
+
 /**
  * Message Schema
  * Represents a single chat message associated with a specific Document and User.
@@ -26,6 +44,10 @@ const messageSchema = new mongoose.Schema(
     content: {
       type: String,
       required: [true, 'Message content is required'],
+    },
+    sources: {
+      type: [sourceCitationSchema],
+      default: [],
     },
   },
   {

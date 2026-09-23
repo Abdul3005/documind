@@ -33,6 +33,63 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  // Document-related application states to prevent cross-user leakage
+  const [activeDocument, setActiveDocument] = useState(null);
+  const [summary, setSummary] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [documentList, setDocumentList] = useState([]);
+
+  const purgeDocumentState = useCallback(() => {
+    setActiveDocument(null);
+    setSummary(null);
+    setMessages([]);
+    setDocumentList([]);
+  }, []);
+
+  const logout = useCallback(() => {
+    // 1. Explicitly purge all document-related states to initial empty values (null / [])
+    setActiveDocument(null);
+    setSummary(null);
+    setMessages([]);
+    setDocumentList([]);
+
+    // 2. Clear localStorage and sessionStorage completely
+    try {
+      if (typeof window !== 'undefined') {
+        if (window.localStorage && typeof window.localStorage.clear === 'function') {
+          window.localStorage.clear();
+        }
+        if (window.sessionStorage && typeof window.sessionStorage.clear === 'function') {
+          window.sessionStorage.clear();
+        }
+      }
+    } catch (e) {
+      console.warn('[AuthContext] Storage clear failed on logout:', e);
+    }
+
+    // 3. Clean up URL session parameters (?doc=..., ?documentId=..., ?chatId=...)
+    try {
+      if (typeof window !== 'undefined' && window.location) {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('doc');
+        url.searchParams.delete('documentId');
+        url.searchParams.delete('chatId');
+        window.history.replaceState({}, '', url.pathname);
+      }
+    } catch (e) {}
+
+    // 4. Reset authentication state
+    safeRemoveToken();
+    setToken(null);
+    setUser(null);
+    setError(null);
+
+    // 5. Broadcast global logout event to purge any hook/component-level caches
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('documind_logout'));
+    }
+  }, []);
+
   // Restore authenticated session on mount if token exists
   useEffect(() => {
     const restoreSession = async () => {
@@ -48,33 +105,27 @@ export function AuthProvider({ children }) {
           setUser(res.user);
           setToken(savedToken);
         } else {
-          safeRemoveToken();
-          setToken(null);
-          setUser(null);
+          logout();
         }
       } catch (err) {
-        safeRemoveToken();
-        setToken(null);
-        setUser(null);
+        logout();
       } finally {
         setLoading(false);
       }
     };
 
     restoreSession();
-  }, []);
+  }, [logout]);
 
   // Listen for global 401 unauthorized events from Axios interceptor
   useEffect(() => {
     const handleUnauthorized = () => {
-      setUser(null);
-      setToken(null);
-      safeRemoveToken();
+      logout();
     };
 
     window.addEventListener('documind_unauthorized', handleUnauthorized);
     return () => window.removeEventListener('documind_unauthorized', handleUnauthorized);
-  }, []);
+  }, [logout]);
 
   const login = async ({ email, password }) => {
     setError(null);
@@ -114,13 +165,6 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const logout = useCallback(() => {
-    safeRemoveToken();
-    setToken(null);
-    setUser(null);
-    setError(null);
-  }, []);
-
   const clearError = useCallback(() => setError(null), []);
 
   return (
@@ -131,6 +175,15 @@ export function AuthProvider({ children }) {
         isAuthenticated: !!token && !!user,
         loading,
         error,
+        activeDocument,
+        setActiveDocument,
+        summary,
+        setSummary,
+        messages,
+        setMessages,
+        documentList,
+        setDocumentList,
+        purgeDocumentState,
         login,
         register,
         logout,

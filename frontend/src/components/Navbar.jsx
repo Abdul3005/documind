@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext.jsx';
 
 export default function Navbar({ activePage = 'dashboard', onNavigate }) {
   const [isOnline, setIsOnline] = useState(false);
+  const [provider, setProvider] = useState('DocuMind AI');
   const { user, isAuthenticated, logout } = useAuth();
 
   useEffect(() => {
@@ -13,6 +14,7 @@ export default function Navbar({ activePage = 'dashboard', onNavigate }) {
         const res = await checkHealth();
         if (res.status === 'ok') {
           setIsOnline(true);
+          if (res.provider) setProvider(res.provider);
         }
       } catch (err) {
         setIsOnline(false);
@@ -68,7 +70,7 @@ export default function Navbar({ activePage = 'dashboard', onNavigate }) {
 
                 <div className="flex items-center space-x-2 text-xs text-slate-400">
                   <Cpu className={`w-3.5 h-3.5 ${isOnline ? 'text-indigo-400' : 'text-slate-500'}`} />
-                  <span>{isOnline ? 'Local AI Online' : 'AI Offline'}</span>
+                  <span>{isOnline ? `${provider} Online` : 'AI Connecting...'}</span>
                 </div>
               </div>
 
