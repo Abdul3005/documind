@@ -78,6 +78,9 @@ export const createDocumentRecord = async (file, userId, options = {}) => {
     // 4. Update document record with extracted text, RAG chunks, extraction method, and status 'ready'
     document.extractedText = extractedText;
     document.extractionMethod = extractionMethod || (fileType === 'image' ? 'ocr' : 'text');
+    document.embeddingModel = 'gemini-embedding-001';
+    document.migrationMarker = 'gemini-embedding-001-v1';
+    document.migratedAt = new Date();
     document.status = 'ready';
     await document.save();
 

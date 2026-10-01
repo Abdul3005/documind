@@ -11,6 +11,7 @@ const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 const TARGET_MODEL = 'gemini-embedding-001';
+export const MIGRATION_MARKER = 'gemini-embedding-001-v1';
 const EXPECTED_DIMENSION = 768;
 
 /**
@@ -70,12 +71,13 @@ export const migrateEmbeddings = async (opts = {}) => {
 
   console.log('====================================================');
   console.log('DocuMind V2 - Embedding Vector Migration Utility');
-  console.log('Target Model:   ', TARGET_MODEL);
-  console.log('Expected Dim:   ', EXPECTED_DIMENSION);
-  console.log('Mode:           ', dryRun ? 'DRY-RUN (Simulated, no writes)' : 'LIVE MIGRATION');
-  console.log('Resume Mode:    ', resume ? 'ENABLED (Skip already migrated)' : 'DISABLED');
-  if (limit) console.log('Document Limit: ', limit);
-  if (docId) console.log('Single Doc ID:  ', docId);
+  console.log('Target Model:     ', TARGET_MODEL);
+  console.log('Migration Marker: ', MIGRATION_MARKER);
+  console.log('Expected Dim:     ', EXPECTED_DIMENSION);
+  console.log('Mode:             ', dryRun ? 'DRY-RUN (Simulated, no writes)' : 'LIVE MIGRATION');
+  console.log('Resume Mode:      ', resume ? 'ENABLED (Skip already verified migrated)' : 'DISABLED');
+  if (limit) console.log('Document Limit:   ', limit);
+  if (docId) console.log('Single Doc ID:    ', docId);
   console.log('====================================================');
 
   // SAFEGUARD: Refuse execution if not confirmed and not dry-run
@@ -86,14 +88,15 @@ export const migrateEmbeddings = async (opts = {}) => {
     throw new Error(errorMsg);
   }
 
-  // Build query
+  // Build query: only documents with chunks
   const query = { 'chunks.0': { $exists: true } };
   if (docId) {
     query._id = docId;
   }
   if (resume) {
-    // Only migrate documents that haven't been tagged with TARGET_MODEL yet
-    query.embeddingModel = { $ne: TARGET_MODEL };
+    // CRITICAL SAFETY RULE: Only skip documents with explicit, verified migrationMarker
+    // Never rely on schema defaults. If migrationMarker is null/missing/different, it MUST be migrated.
+    query.migrationMarker = { $ne: MIGRATION_MARKER };
   }
 
   let docQuery = Document.find(query);
@@ -103,7 +106,7 @@ export const migrateEmbeddings = async (opts = {}) => {
 
   const documents = await docQuery;
   const totalDocs = documents.length;
-  console.log(`[Migration] Found ${totalDocs} document(s) matching criteria.`);
+  console.log(`[Migration] Found ${totalDocs} document(s) requiring migration.`);
 
   if (totalDocs === 0) {
     console.log('[Migration] No documents require migration. Exiting.');
@@ -133,7 +136,7 @@ export const migrateEmbeddings = async (opts = {}) => {
         // In dry run, validate chunks without writing to DB
         console.log(`[DRY-RUN] Simulating embedding generation for ${chunkTexts.length} chunks...`);
         console.log(`[DRY-RUN] Preserving chunk fields: index, text, offsetStart, offsetEnd`);
-        console.log(`[DRY-RUN] Would update Document ${doc._id} embeddingModel to ${TARGET_MODEL}`);
+        console.log(`[DRY-RUN] Would update Document ${doc._id} embeddingModel to ${TARGET_MODEL} and migrationMarker to ${MIGRATION_MARKER}`);
         migratedDocs++;
         continue;
       }
@@ -167,13 +170,15 @@ export const migrateEmbeddings = async (opts = {}) => {
         embedding: newEmbeddings[idx],
       }));
 
-      // Atomic update for document
+      // Atomic update for document: only writes marker AFTER all chunks are validated
       await Document.updateOne(
         { _id: doc._id },
         {
           $set: {
             chunks: updatedChunks,
             embeddingModel: TARGET_MODEL,
+            migrationMarker: MIGRATION_MARKER,
+            migratedAt: new Date(),
           },
         }
       );

@@ -76,7 +76,15 @@ const documentSchema = new mongoose.Schema(
     },
     embeddingModel: {
       type: String,
-      default: 'gemini-embedding-001',
+      default: null,
+    },
+    migrationMarker: {
+      type: String,
+      default: null,
+    },
+    migratedAt: {
+      type: Date,
+      default: null,
     },
   },
   {

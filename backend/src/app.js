@@ -48,7 +48,7 @@ app.use('/api/documents', chatRoutes);
 app.get('/api/health', (req, res) => {
   const provider =
     process.env.GEMINI_API_KEY ? 'Gemini 1.5 Flash' :
-    process.env.GROQ_API_KEY ? 'Groq Llama-3' :
+    process.env.GROQ_API_KEY ? 'Groq GPT-OSS' :
     process.env.OPENAI_API_KEY ? 'OpenAI GPT-4' :
     'DocuMind AI';
 

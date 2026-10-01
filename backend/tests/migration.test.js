@@ -6,7 +6,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import Document from '../src/models/Document.js';
 import { generateEmbedding, generateBatchEmbeddings, generateMockVector } from '../src/services/embedding.service.js';
-import { migrateEmbeddings, parseArgs } from '../scripts/migrateEmbeddings.js';
+import { migrateEmbeddings, parseArgs, MIGRATION_MARKER } from '../scripts/migrateEmbeddings.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -80,16 +80,22 @@ describe('AI Provider Deprecation & Migration Safeguard Suite', () => {
     });
   });
 
-  describe('2. Groq Candidate Models Sanity Check', () => {
+  describe('2. Groq Active Models Verification (No Decommissioned Models in Production)', () => {
     it('should not contain decommissioned Groq models in candidateModels in ai.service.js', () => {
       const aiServicePath = path.resolve(__dirname, '../src/services/ai.service.js');
       const code = fs.readFileSync(aiServicePath, 'utf-8');
+
+      // Verify all decommissioned models are completely absent from candidates
       expect(code).not.toContain("'llama3-70b-8192'");
       expect(code).not.toContain("'llama3-8b-8192'");
       expect(code).not.toContain("'gemma2-9b-it'");
-      expect(code).not.toContain("'openai/gpt-oss-20b'");
-      expect(code).toContain("'llama-3.1-8b-instant'");
-      expect(code).toContain("'llama-3.3-70b-versatile'");
+      expect(code).not.toContain("'llama-3.1-8b-instant'");
+      expect(code).not.toContain("'llama-3.3-70b-versatile'");
+      expect(code).not.toContain("'mixtral-8x7b-32768'");
+
+      // Verify verified active production models on Groq are present
+      expect(code).toContain("'openai/gpt-oss-120b'");
+      expect(code).toContain("'openai/gpt-oss-20b'");
     });
   });
 
@@ -120,7 +126,8 @@ describe('AI Provider Deprecation & Migration Safeguard Suite', () => {
         chunks: [
           { index: 0, text: 'Important financial report context.', embedding: fakeOldEmbedding },
         ],
-        embeddingModel: 'old-model',
+        embeddingModel: null,
+        migrationMarker: null,
       });
 
       const result = await migrateEmbeddings({ dryRun: true });
@@ -129,11 +136,34 @@ describe('AI Provider Deprecation & Migration Safeguard Suite', () => {
 
       // Verify DB was NOT modified in dry-run
       const freshDoc = await Document.findById(testDoc._id);
-      expect(freshDoc.embeddingModel).toBe('old-model');
+      expect(freshDoc.migrationMarker).toBeNull();
       expect(freshDoc.chunks[0].embedding[0]).toBe(0.123);
     });
 
-    it('should atomically update document chunks and metadata when confirm is true', async () => {
+    it('should NEVER falsely skip existing old documents that lack migrationMarker during --resume', async () => {
+      // Create a legacy document representing pre-existing MongoDB records (no migrationMarker, no embeddingModel)
+      const fakeOldEmbedding = new Array(768).fill(0.999);
+      const legacyDoc = await Document.create({
+        userId: new mongoose.Types.ObjectId(),
+        filename: 'legacy_pre_migration_doc.pdf',
+        fileType: 'pdf',
+        extractedText: 'Legacy document embedded with previous model.',
+        status: 'ready',
+        chunks: [
+          { index: 0, text: 'Legacy document embedded with previous model.', embedding: fakeOldEmbedding },
+        ],
+        // Simulates old documents without new metadata
+        embeddingModel: null,
+        migrationMarker: null,
+      });
+
+      // Resume mode MUST find and include this document for migration
+      const result = await migrateEmbeddings({ dryRun: true, resume: true });
+      expect(result.totalDocs).toBe(1);
+      expect(result.migratedDocs).toBe(1);
+    });
+
+    it('should atomically update document chunks and write verified migrationMarker when confirm is true', async () => {
       const fakeOldEmbedding = new Array(768).fill(0.001);
       const testDoc = await Document.create({
         userId: new mongoose.Types.ObjectId(),
@@ -145,7 +175,8 @@ describe('AI Provider Deprecation & Migration Safeguard Suite', () => {
           { index: 0, text: 'First section text.', offsetStart: 0, offsetEnd: 19, embedding: fakeOldEmbedding },
           { index: 1, text: 'Second section text.', offsetStart: 20, offsetEnd: 40, embedding: fakeOldEmbedding },
         ],
-        embeddingModel: 'old-model',
+        embeddingModel: null,
+        migrationMarker: null,
       });
 
       const result = await migrateEmbeddings({ confirm: true, limit: 1 });
@@ -154,6 +185,8 @@ describe('AI Provider Deprecation & Migration Safeguard Suite', () => {
 
       const updated = await Document.findById(testDoc._id);
       expect(updated.embeddingModel).toBe('gemini-embedding-001');
+      expect(updated.migrationMarker).toBe(MIGRATION_MARKER);
+      expect(updated.migratedAt).toBeInstanceOf(Date);
       expect(updated.chunks.length).toBe(2);
       expect(updated.chunks[0].offsetStart).toBe(0);
       expect(updated.chunks[0].offsetEnd).toBe(19);
@@ -162,7 +195,7 @@ describe('AI Provider Deprecation & Migration Safeguard Suite', () => {
       expect(updated.chunks[0].embedding[0]).not.toBe(0.001);
     });
 
-    it('should respect resume flag and skip documents already tagged with gemini-embedding-001', async () => {
+    it('should respect resume flag and safely skip documents that possess verified migrationMarker', async () => {
       await Document.create({
         userId: new mongoose.Types.ObjectId(),
         filename: 'already_migrated.pdf',
@@ -171,6 +204,7 @@ describe('AI Provider Deprecation & Migration Safeguard Suite', () => {
         status: 'ready',
         chunks: [{ index: 0, text: 'Already migrated text content.', embedding: new Array(768).fill(0.5) }],
         embeddingModel: 'gemini-embedding-001',
+        migrationMarker: MIGRATION_MARKER,
       });
 
       const result = await migrateEmbeddings({ dryRun: true, resume: true });

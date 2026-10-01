@@ -276,16 +276,15 @@ export const formatMessagesForLLM = (prompt) => {
 /**
  * Call Groq Cloud API with model fallback
  */
-const callGroq = async (prompt, preferredModel = 'llama-3.1-8b-instant') => {
+const callGroq = async (prompt, preferredModel = 'openai/gpt-oss-120b') => {
   const groq = getGroqClient();
   if (!groq) throw new Error('Groq client not configured or missing GROQ_API_KEY.');
 
   const candidateModels = [
     process.env.GROQ_MODEL,
     preferredModel,
-    'llama-3.1-8b-instant',
-    'llama-3.3-70b-versatile',
-    'mixtral-8x7b-32768',
+    'openai/gpt-oss-120b',
+    'openai/gpt-oss-20b',
   ].filter(Boolean);
 
   // De-duplicate candidate models preserving order
