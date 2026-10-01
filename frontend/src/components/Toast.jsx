@@ -18,11 +18,11 @@ export default function Toast({ message, type = 'error', onClose, duration = 600
   return (
     <div className="fixed bottom-5 right-5 z-50 flex flex-col space-y-2 max-w-sm sm:max-w-md w-full px-4 pointer-events-none transition-all duration-300">
       <div
-        className={`pointer-events-auto flex items-start justify-between p-4 rounded-2xl border shadow-2xl backdrop-blur-xl transition-all ${
+        className={`pointer-events-auto flex items-start justify-between p-4 rounded-2xl border shadow-2xl backdrop-blur-xl transition-all shadow-[inset_0_1px_0_0_rgba(255,255,255,0.12)] ${
           isSuccess
             ? 'bg-emerald-950/90 border-emerald-700/60 text-emerald-200 shadow-emerald-950/50'
             : isInfo
-            ? 'bg-indigo-950/90 border-indigo-700/60 text-indigo-200 shadow-indigo-950/50'
+            ? 'bg-slate-900/95 border-slate-700/80 text-slate-200 shadow-slate-950/50'
             : 'bg-red-950/90 border-red-700/60 text-red-200 shadow-red-950/50'
         }`}
       >
@@ -30,7 +30,7 @@ export default function Toast({ message, type = 'error', onClose, duration = 600
           {isSuccess ? (
             <CheckCircle className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
           ) : isInfo ? (
-            <Info className="w-5 h-5 text-indigo-400 shrink-0 mt-0.5" />
+            <Info className="w-5 h-5 text-slate-300 shrink-0 mt-0.5" />
           ) : (
             <AlertTriangle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
           )}

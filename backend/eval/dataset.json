@@ -1,0 +1,452 @@
+[
+  {
+    "id": "eval-001",
+    "question": "What is the maximum token input limit for Gemini text-embedding-004?",
+    "expected_answer": "Gemini text-embedding-004 accepts up to 2048 input tokens and produces 768-dimensional normalized vector embeddings.",
+    "source_document": "technical_specifications.pdf",
+    "ground_truth_context": [
+      "Gemini text-embedding-004 accepts up to 2048 input tokens and produces 768-dimensional normalized vector embeddings for high-precision retrieval."
+    ]
+  },
+  {
+    "id": "eval-002",
+    "question": "What is the default chunk size and overlap in DocuMind's baseline text splitter?",
+    "expected_answer": "DocuMind baseline text splitter defaults to an 800-character chunk size with a 150-character sliding overlap.",
+    "source_document": "technical_specifications.pdf",
+    "ground_truth_context": [
+      "The baseline chunking pipeline utilizes a default chunk size of 800 characters with an overlap window of 150 characters to preserve boundary continuity."
+    ]
+  },
+  {
+    "id": "eval-003",
+    "question": "Which algorithm is used for exact in-memory vector ranking during retrieval fallback?",
+    "expected_answer": "Exact Cosine Similarity ranking is computed over the document chunk embeddings using the dot product divided by the product of vector norms.",
+    "source_document": "technical_specifications.pdf",
+    "ground_truth_context": [
+      "During local development or when MongoDB Atlas Search is unavailable, retrieval falls back to exact in-memory Cosine Similarity calculated as (A • B) / (||A|| * ||B||)."
+    ]
+  },
+  {
+    "id": "eval-004",
+    "question": "What rate limit is enforced on document upload requests in DocuMind API?",
+    "expected_answer": "Document uploads are strictly limited to 20 requests per 15-minute window per IP address to safeguard server resources.",
+    "source_document": "technical_specifications.pdf",
+    "ground_truth_context": [
+      "To prevent resource exhaustion, upload endpoints enforce a strict rate limit of 20 document upload requests per 15-minute window per IP address."
+    ]
+  },
+  {
+    "id": "eval-005",
+    "question": "What happens if a user submits a corrupted PDF with invalid headers?",
+    "expected_answer": "The server catches the error, sets the document status to failed, and returns an HTTP 422 Unprocessable Entity with a descriptive error message.",
+    "source_document": "technical_specifications.pdf",
+    "ground_truth_context": [
+      "When a corrupted file or invalid PDF header is uploaded, the document status transitions to 'failed', temp files are purged, and an HTTP 422 Unprocessable Entity error is returned."
+    ]
+  },
+  {
+    "id": "eval-006",
+    "question": "How are prompt injection attacks mitigated in DocuMind's AI prompt builder?",
+    "expected_answer": "All context and question delimiters such as <<<CONTEXT>>> and <<<END CONTEXT>>> are sanitized and escaped to prevent prompt breakout.",
+    "source_document": "technical_specifications.pdf",
+    "ground_truth_context": [
+      "To thwart prompt injection attacks, the ai.service sanitizes bounding delimiters by replacing <<<CONTEXT>>> and <<<END CONTEXT>>> with safe brackets [[[CONTEXT]]]."
+    ]
+  },
+  {
+    "id": "eval-007",
+    "question": "What maximum file size does Multer permit for uploaded documents?",
+    "expected_answer": "Multer enforces a strict maximum file size limit of 10MB (10,485,760 bytes).",
+    "source_document": "technical_specifications.pdf",
+    "ground_truth_context": [
+      "The upload middleware configures Multer disk storage with a strict 10MB maximum file size ceiling (10485760 bytes) rejecting oversized payloads with HTTP 413."
+    ]
+  },
+  {
+    "id": "eval-008",
+    "question": "What OCR engine is used when extracted PDF text contains fewer than 50 characters?",
+    "expected_answer": "Tesseract.js OCR engine is triggered as an automated fallback to extract text from scanned PDF pages.",
+    "source_document": "technical_specifications.pdf",
+    "ground_truth_context": [
+      "If pdf-parse yields fewer than 50 extracted characters from a PDF, the system recognizes a scanned document and initiates automated Tesseract.js OCR fallback."
+    ]
+  },
+  {
+    "id": "eval-009",
+    "question": "What is the vector dimension for DocuMind embeddings?",
+    "expected_answer": "Embeddings are strictly normalized 768-dimensional floating point vectors.",
+    "source_document": "technical_specifications.pdf",
+    "ground_truth_context": [
+      "All embedding vectors produced by Gemini text-embedding-004 and BAAI/bge-base-en-v1.5 are normalized to exactly 768 dimensions."
+    ]
+  },
+  {
+    "id": "eval-010",
+    "question": "What is the token-to-character ratio used in DocuMind's token chunking service?",
+    "expected_answer": "The heuristic ratio is 4 characters per token.",
+    "source_document": "technical_specifications.pdf",
+    "ground_truth_context": [
+      "The textSplitter service applies an NLP heuristic of approximately 4 characters per token (CHARS_PER_TOKEN = 4) to map token presets to character windows."
+    ]
+  },
+  {
+    "id": "eval-011",
+    "question": "What are the three pre-configured token presets in DocuMind Advanced RAG?",
+    "expected_answer": "The presets are 256 tokens, 512 tokens, and 1024 tokens with proportional sliding overlaps.",
+    "source_document": "technical_specifications.pdf",
+    "ground_truth_context": [
+      "DocuMind Advanced RAG provides three standardized token presets: 256 tokens (50 overlap), 512 tokens (100 overlap), and 1024 tokens (200 overlap)."
+    ]
+  },
+  {
+    "id": "eval-012",
+    "question": "How does the hybrid search service combine vector and text scores?",
+    "expected_answer": "By taking a convex weighted combination: hybridScore = (vectorWeight * vectorScore) + (textWeight * textScore).",
+    "source_document": "technical_specifications.pdf",
+    "ground_truth_context": [
+      "Hybrid search blends normalized vector similarity and keyword occurrence scores using a weighted linear combination: hybridScore = (vectorWeight * vectorScore) + (textWeight * textScore)."
+    ]
+  },
+  {
+    "id": "eval-013",
+    "question": "What weights are assigned by default to vector and text search in hybrid retrieval?",
+    "expected_answer": "Default weights are 0.7 for vector search and 0.3 for keyword text search.",
+    "source_document": "technical_specifications.pdf",
+    "ground_truth_context": [
+      "The default weighting parameters for hybrid retrieval are configured as vectorWeight = 0.7 and textWeight = 0.3."
+    ]
+  },
+  {
+    "id": "eval-014",
+    "question": "What is the default minimum relevance threshold cutoff for RAG retrieval?",
+    "expected_answer": "The default cutoff threshold is 0.15.",
+    "source_document": "technical_specifications.pdf",
+    "ground_truth_context": [
+      "The RAG pipeline filters out chunks whose relevance similarity falls below the default cutoff threshold of 0.15 (DEFAULT_MIN_RELEVANCE_THRESHOLD = 0.15)."
+    ]
+  },
+  {
+    "id": "eval-015",
+    "question": "How are conversational pronouns resolved in the query rewriting layer?",
+    "expected_answer": "Recent conversation history is analyzed to extract subject keywords and expand the query to be self-contained.",
+    "source_document": "technical_specifications.pdf",
+    "ground_truth_context": [
+      "The rewriteQuery service inspects previous dialogue turns to resolve coreferenced pronouns like 'it' or 'they' into explicit entity terms."
+    ]
+  },
+  {
+    "id": "eval-016",
+    "question": "What is the standard confidentiality term duration under Section 4 of the Master Service Agreement?",
+    "expected_answer": "Confidentiality obligations endure for a period of five (5) years following termination of the agreement.",
+    "source_document": "commercial_contract_msa.pdf",
+    "ground_truth_context": [
+      "Section 4.2 Confidentiality: The receiving party shall safeguard all Proprietary Information for a duration of five (5) years following the termination or expiration of this Agreement."
+    ]
+  },
+  {
+    "id": "eval-017",
+    "question": "What is the maximum aggregate liability cap agreed between the parties?",
+    "expected_answer": "The aggregate liability is capped at the total fees paid by Customer during the twelve (12) months preceding the claim.",
+    "source_document": "commercial_contract_msa.pdf",
+    "ground_truth_context": [
+      "Section 9.1 Limitation of Liability: In no event shall either party's aggregate liability exceed the total amounts actually paid by Customer in the twelve (12) months immediately preceding the event."
+    ]
+  },
+  {
+    "id": "eval-018",
+    "question": "How many days notice must be provided for termination for convenience?",
+    "expected_answer": "Either party may terminate for convenience with sixty (60) days prior written notice.",
+    "source_document": "commercial_contract_msa.pdf",
+    "ground_truth_context": [
+      "Section 11.3 Termination for Convenience: Either party may terminate this Agreement without cause upon providing at least sixty (60) days advance written notice to the other party."
+    ]
+  },
+  {
+    "id": "eval-019",
+    "question": "What is the governing law and designated jurisdiction for dispute resolution?",
+    "expected_answer": "The agreement is governed by the laws of the State of Delaware, with exclusive jurisdiction in New Castle County.",
+    "source_document": "commercial_contract_msa.pdf",
+    "ground_truth_context": [
+      "Section 14.5 Governing Law: This Agreement shall be construed in accordance with the laws of the State of Delaware, and the courts of New Castle County shall hold exclusive jurisdiction."
+    ]
+  },
+  {
+    "id": "eval-020",
+    "question": "What constitutes an event of material breach triggering immediate termination?",
+    "expected_answer": "Failure to cure a non-payment or security breach within thirty (30) days of receiving written notice.",
+    "source_document": "commercial_contract_msa.pdf",
+    "ground_truth_context": [
+      "Section 11.2 Material Breach: A party may terminate immediately if the other party fails to cure a material breach, including non-payment or data security defaults, within thirty (30) days of written notice."
+    ]
+  },
+  {
+    "id": "eval-021",
+    "question": "Who owns intellectual property created under custom development statements of work?",
+    "expected_answer": "Customer retains ownership of custom deliverables, while Vendor retains ownership of pre-existing background IP.",
+    "source_document": "commercial_contract_msa.pdf",
+    "ground_truth_context": [
+      "Section 6.1 Intellectual Property: All custom project deliverables vest exclusively in Customer upon final payment; Vendor retains all rights in pre-existing Background IP and core platform software."
+    ]
+  },
+  {
+    "id": "eval-022",
+    "question": "What is the payment grace period before late interest charges begin accruing?",
+    "expected_answer": "Invoices are payable Net 30, after which interest accrues at 1.5% per month or the legal maximum.",
+    "source_document": "commercial_contract_msa.pdf",
+    "ground_truth_context": [
+      "Section 3.4 Invoicing & Terms: All undisputed invoices shall be paid Net 30 days from receipt; overdue balances accrue late interest at 1.5% per month."
+    ]
+  },
+  {
+    "id": "eval-023",
+    "question": "Under what conditions is a party excused from performance under force majeure?",
+    "expected_answer": "Acts of God, war, terrorism, catastrophic power failures, or government embargoes beyond reasonable control.",
+    "source_document": "commercial_contract_msa.pdf",
+    "ground_truth_context": [
+      "Section 13.1 Force Majeure: Neither party shall be liable for delays caused by circumstances beyond reasonable control, including natural disasters, warfare, government embargoes, or widespread utility outages."
+    ]
+  },
+  {
+    "id": "eval-024",
+    "question": "What insurance coverage must the vendor maintain throughout the agreement?",
+    "expected_answer": "Commercial General Liability of at least $2,000,000 and Cyber/Technology Errors & Omissions of at least $5,000,000.",
+    "source_document": "commercial_contract_msa.pdf",
+    "ground_truth_context": [
+      "Section 8.2 Insurance: Vendor shall maintain Commercial General Liability of not less than $2,000,000 per occurrence and Technology Errors and Omissions/Cyber Liability of at least $5,000,000."
+    ]
+  },
+  {
+    "id": "eval-025",
+    "question": "What are the vendor's obligations regarding customer data return upon contract termination?",
+    "expected_answer": "Vendor must return or securely delete all customer data within thirty (30) business days and provide written certification.",
+    "source_document": "commercial_contract_msa.pdf",
+    "ground_truth_context": [
+      "Section 4.4 Data Return: Within thirty (30) business days of contract expiration, Vendor shall return or securely destroy all Customer Data and certify compliance in writing."
+    ]
+  },
+  {
+    "id": "eval-026",
+    "question": "Are parties permitted to assign this agreement without prior consent?",
+    "expected_answer": "No assignment is permitted without prior written consent, except in connection with a merger or acquisition of substantially all assets.",
+    "source_document": "commercial_contract_msa.pdf",
+    "ground_truth_context": [
+      "Section 14.1 Assignment: Neither party may assign its obligations without prior written consent, provided that assignment to a successor entity via merger or asset acquisition is permitted."
+    ]
+  },
+  {
+    "id": "eval-027",
+    "question": "What is the indemnification obligation for third-party intellectual property infringement claims?",
+    "expected_answer": "Vendor will defend, indemnify, and hold harmless Customer against claims that the software infringes any third-party patent or copyright.",
+    "source_document": "commercial_contract_msa.pdf",
+    "ground_truth_context": [
+      "Section 10.1 IP Indemnity: Vendor shall defend and indemnify Customer against any third-party claim alleging that Customer's authorized use of the Service infringes any valid patent, copyright, or trade secret."
+    ]
+  },
+  {
+    "id": "eval-028",
+    "question": "What was the total consolidated net revenue reported for Q3 2026?",
+    "expected_answer": "Consolidated net revenue for Q3 2026 reached $14.82 million, representing a 28.4% year-over-year increase.",
+    "source_document": "financial_earnings_report.pdf",
+    "ground_truth_context": [
+      "Table 1.1 Consolidated Financial Summary: Q3 2026 net revenue totaled $14.82 million, reflecting strong year-over-year revenue expansion of 28.4%."
+    ]
+  },
+  {
+    "id": "eval-029",
+    "question": "What was the GAAP gross profit margin achieved in Q3?",
+    "expected_answer": "GAAP gross profit margin was 74.2% compared to 69.8% in the prior year quarter.",
+    "source_document": "financial_earnings_report.pdf",
+    "ground_truth_context": [
+      "Gross profit reached $11.00 million, delivering a GAAP gross margin of 74.2%, up 440 basis points from 69.8% in Q3 2025."
+    ]
+  },
+  {
+    "id": "eval-030",
+    "question": "How much cash and short-term investments did the company hold at quarter end?",
+    "expected_answer": "The company held $42.6 million in cash, cash equivalents, and short-term liquid investments.",
+    "source_document": "financial_earnings_report.pdf",
+    "ground_truth_context": [
+      "Liquidity: As of September 30, 2026, total cash, cash equivalents, and marketable short-term securities stood at $42.6 million with zero outstanding long-term debt."
+    ]
+  },
+  {
+    "id": "eval-031",
+    "question": "What was the operating cash flow generated during the nine-month period?",
+    "expected_answer": "Cash flow from operating activities was $8.95 million for the nine months ended September 30, 2026.",
+    "source_document": "financial_earnings_report.pdf",
+    "ground_truth_context": [
+      "Cash Flows: Net cash provided by operating activities totaled $8.95 million for the nine-month fiscal period, compared to $5.12 million in the prior year period."
+    ]
+  },
+  {
+    "id": "eval-032",
+    "question": "What was the total research and development expense in Q3 2026?",
+    "expected_answer": "R&D expenditures were $3.45 million, representing 23.3% of net revenues.",
+    "source_document": "financial_earnings_report.pdf",
+    "ground_truth_context": [
+      "Operating Expenses: Research and development expenses for the third quarter were $3.45 million (23.3% of revenue) driven by AI model optimization investments."
+    ]
+  },
+  {
+    "id": "eval-033",
+    "question": "What is the projected full-year 2026 revenue guidance range provided by management?",
+    "expected_answer": "Full-year revenue guidance was revised upward to between $58.0 million and $60.5 million.",
+    "source_document": "financial_earnings_report.pdf",
+    "ground_truth_context": [
+      "Fiscal Outlook: Management raised full-year 2026 revenue guidance to a range of $58.0 million to $60.5 million, reflecting 31% annual growth at the midpoint."
+    ]
+  },
+  {
+    "id": "eval-034",
+    "question": "What was the diluted earnings per share (EPS) reported for the quarter?",
+    "expected_answer": "Diluted earnings per share was $0.22, exceeding consensus estimates of $0.17.",
+    "source_document": "financial_earnings_report.pdf",
+    "ground_truth_context": [
+      "Net Income & EPS: Net income was $2.84 million, producing diluted earnings per share of $0.22 compared to $0.11 in the third quarter of 2025."
+    ]
+  },
+  {
+    "id": "eval-035",
+    "question": "What was the customer retention rate reported in the enterprise segment?",
+    "expected_answer": "Net revenue retention (NRR) in enterprise accounts was 126% with a 98% gross logo retention rate.",
+    "source_document": "financial_earnings_report.pdf",
+    "ground_truth_context": [
+      "Operational KPIs: Enterprise net revenue retention rate (NRR) reached 126%, while annual gross customer logo retention remained exceptionally high at 98%."
+    ]
+  },
+  {
+    "id": "eval-036",
+    "question": "What amount of capital expenditure (CapEx) was incurred in Q3?",
+    "expected_answer": "Capital expenditures for computer hardware and server infrastructure were $620,000.",
+    "source_document": "financial_earnings_report.pdf",
+    "ground_truth_context": [
+      "Investing Activities: Capital expenditures for property, compute clusters, and equipment totaled $620,000 during Q3 2026."
+    ]
+  },
+  {
+    "id": "eval-037",
+    "question": "How many full-time enterprise subscription customers does DocuMind have?",
+    "expected_answer": "DocuMind concluded the quarter with 418 active enterprise subscription clients.",
+    "source_document": "financial_earnings_report.pdf",
+    "ground_truth_context": [
+      "Customer Metrics: Total enterprise customers subscribing to DocuMind platform grew to 418 accounts, up from 305 accounts a year ago."
+    ]
+  },
+  {
+    "id": "eval-038",
+    "question": "What was the effective tax rate applied in the quarterly financial statements?",
+    "expected_answer": "The effective tax rate for the third quarter was 18.5%.",
+    "source_document": "financial_earnings_report.pdf",
+    "ground_truth_context": [
+      "Taxes: Provision for income taxes reflected an effective corporate tax rate of 18.5% for the three-month period ended September 30, 2026."
+    ]
+  },
+  {
+    "id": "eval-039",
+    "question": "What share repurchase authorization was approved by the Board of Directors?",
+    "expected_answer": "The Board approved a $10.0 million open-market share repurchase program expiring in December 2027.",
+    "source_document": "financial_earnings_report.pdf",
+    "ground_truth_context": [
+      "Capital Allocation: On October 12, the Board of Directors authorized a $10.0 million share buyback program effective through December 31, 2027."
+    ]
+  },
+  {
+    "id": "eval-040",
+    "question": "What was the total stock-based compensation expense recorded in Q3?",
+    "expected_answer": "Stock-based compensation expense was $840,000 across all departments.",
+    "source_document": "financial_earnings_report.pdf",
+    "ground_truth_context": [
+      "Non-GAAP Reconciliations: Total non-cash stock-based compensation expense recognized in operating results was $840,000 for Q3 2026."
+    ]
+  },
+  {
+    "id": "eval-041",
+    "question": "What is the student name and roll number identified on the handwritten homework sheet?",
+    "expected_answer": "Student Name: Sarah Ahmed, Roll No: 2024-SE-109.",
+    "source_document": "scanned_handwritten_assignment.pdf",
+    "ground_truth_context": [
+      "Student Name: Sarah Ahmed\nRoll No: 2024-SE-109\nCourse: Advanced Algorithms & Data Structures\nAssignment #3"
+    ]
+  },
+  {
+    "id": "eval-042",
+    "question": "What is the recurrence relation stated in Problem 1 of the homework notes?",
+    "expected_answer": "The recurrence relation is T(n) = 2T(n/2) + O(n), solving to O(n log n) by Master Theorem Case 2.",
+    "source_document": "scanned_handwritten_assignment.pdf",
+    "ground_truth_context": [
+      "Problem 1: Analyze MergeSort recurrence relation:\nT(n) = 2T(n/2) + O(n)\nBy Master Theorem: a=2, b=2, d=1. Since a = b^d, T(n) = O(n log n)."
+    ]
+  },
+  {
+    "id": "eval-043",
+    "question": "What data structure is recommended for Dijkstra's shortest path algorithm in the notes?",
+    "expected_answer": "A Min-Heap priority queue achieving O((V + E) log V) time complexity.",
+    "source_document": "scanned_handwritten_assignment.pdf",
+    "ground_truth_context": [
+      "Problem 2 Graph Shortest Path:\nUse Min-Heap priority queue for Dijkstra's algorithm. Time complexity improves to O((V + E) log V)."
+    ]
+  },
+  {
+    "id": "eval-044",
+    "question": "What is the submission deadline date and room number written at the top of the assignment?",
+    "expected_answer": "Deadline: October 24, 2026 at 5:00 PM in Room CS-304.",
+    "source_document": "scanned_handwritten_assignment.pdf",
+    "ground_truth_context": [
+      "Due Date: October 24, 2026 before 5:00 PM sharp.\nSubmission Box: Room CS-304 Faculty Annex."
+    ]
+  },
+  {
+    "id": "eval-045",
+    "question": "What base case condition is written for the dynamic programming knapsack problem?",
+    "expected_answer": "dp[0][w] = 0 for all w from 0 to W, and dp[i][0] = 0 for all items i.",
+    "source_document": "scanned_handwritten_assignment.pdf",
+    "ground_truth_context": [
+      "Problem 3 0/1 Knapsack DP formulation:\nBase Cases:\ndp[0][w] = 0 for all w in range 0..W\ndp[i][0] = 0 for all items i in 0..N"
+    ]
+  },
+  {
+    "id": "eval-046",
+    "question": "What does the instructor note remark about late submissions?",
+    "expected_answer": "A 10% penalty per day will be deducted for late submissions, with zero credit after 48 hours.",
+    "source_document": "scanned_handwritten_assignment.pdf",
+    "ground_truth_context": [
+      "Instructor Note: Late submissions will incur a 10% grade penalty per 24 hours. No work accepted after 48 hours."
+    ]
+  },
+  {
+    "id": "eval-047",
+    "question": "Which hash table collision resolution technique is analyzed in Problem 4?",
+    "expected_answer": "Double hashing with secondary hash function h2(k) = 7 - (k mod 7).",
+    "source_document": "scanned_handwritten_assignment.pdf",
+    "ground_truth_context": [
+      "Problem 4 Open Addressing:\nDouble hashing probe sequence: h(k, i) = (h1(k) + i * h2(k)) mod m where h2(k) = 7 - (k mod 7)."
+    ]
+  },
+  {
+    "id": "eval-048",
+    "question": "What asymptotic lower bound is proved for comparison-based sorting algorithms?",
+    "expected_answer": "The lower bound is Omega(n log n) based on decision tree height with n! leaves.",
+    "source_document": "scanned_handwritten_assignment.pdf",
+    "ground_truth_context": [
+      "Problem 5 Decision Tree Lower Bound:\nAny comparison sort has at least n! leaves. Tree height h >= log2(n!) = Omega(n log n)."
+    ]
+  },
+  {
+    "id": "eval-049",
+    "question": "What total score / marks are allocated for Assignment #3?",
+    "expected_answer": "Assignment #3 is graded out of a total of 50 marks (5 questions, 10 marks each).",
+    "source_document": "scanned_handwritten_assignment.pdf",
+    "ground_truth_context": [
+      "Grading Breakdown: Total Marks = 50. Each of the 5 problems carries equal weight of 10 marks."
+    ]
+  },
+  {
+    "id": "eval-050",
+    "question": "What student lab group partner is listed on the signature line?",
+    "expected_answer": "Lab Partner: Bilal Tariq (Roll No: 2024-SE-115).",
+    "source_document": "scanned_handwritten_assignment.pdf",
+    "ground_truth_context": [
+      "Lab Partner & Collaborator: Bilal Tariq (Roll No: 2024-SE-115). Signed: Sarah Ahmed."
+    ]
+  }
+]

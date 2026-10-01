@@ -87,3 +87,10 @@ export const chunkText = (text, chunkSize = DEFAULT_CHUNK_SIZE, overlap = DEFAUL
 
   return chunks;
 };
+
+export {
+  CHUNK_PRESETS,
+  CHARS_PER_TOKEN,
+  estimateTokenCount,
+  splitTextByTokens,
+} from './textSplitter.service.js';

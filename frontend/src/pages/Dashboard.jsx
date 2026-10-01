@@ -109,27 +109,27 @@ export default function Dashboard({
       />
 
       {/* Top Banner */}
-      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 p-6 glass-panel rounded-2xl border border-slate-800 bg-gradient-to-r from-slate-900/90 via-indigo-950/20 to-slate-900/90">
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 p-6 glass-panel rounded-2xl border border-white/10 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.12)] shadow-soft-sm">
         <div>
-          <h1 className="text-2xl font-bold text-slate-100">Document Intelligence Dashboard</h1>
-          <p className="text-sm text-slate-400 mt-1">
+          <h1 className="text-2xl font-bold bg-gradient-to-r from-slate-100 via-slate-200 to-slate-400 bg-clip-text text-transparent tracking-tight">Document Intelligence Dashboard</h1>
+          <p className="text-sm text-slate-300/90 font-medium mt-1">
             Upload PDF contracts or image receipts to extract text, chat with AI, and generate summaries.
           </p>
         </div>
         <div className="flex items-center space-x-3 text-xs">
-          <div className="px-3 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700 text-slate-300">
-            Total Docs: <span className="font-semibold text-indigo-400">{documents.length}</span>
+          <div className="px-3 py-1.5 rounded-xl bg-slate-900/60 border border-slate-700/60 text-slate-300/90 shadow-soft-xs font-medium">
+            Total Docs: <span className="font-semibold text-emerald-400">{documents.length}</span>
           </div>
-          <div className="px-3 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700 text-slate-300">
+          <div className="px-3 py-1.5 rounded-xl bg-slate-900/60 border border-slate-700/60 text-slate-300/90 shadow-soft-xs font-medium">
             OCR Engine: <span className="font-semibold text-emerald-400">PDF + Tesseract</span>
           </div>
         </div>
       </div>
 
       {/* Upload Dropzone Section */}
-      <div className="glass-panel p-6 rounded-2xl border border-slate-800">
-        <h2 className="text-sm font-semibold text-slate-300 mb-4 flex items-center space-x-2">
-          <span className="w-2 h-2 rounded-full bg-indigo-500" />
+      <div className="glass-panel p-6 rounded-2xl border border-white/10 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.12)] shadow-soft-sm">
+        <h2 className="text-sm font-semibold text-slate-200 mb-4 flex items-center space-x-2">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
           <span>Upload New Document</span>
         </h2>
         <UploadDropzone
@@ -144,8 +144,8 @@ export default function Dashboard({
       <div className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <h2 className="text-lg font-bold text-slate-200">Document Library</h2>
-            <span className="text-xs text-slate-400">{documents.length} items stored in MongoDB</span>
+            <h2 className="text-lg font-bold bg-gradient-to-r from-slate-100 via-slate-200 to-slate-400 bg-clip-text text-transparent tracking-tight">Document Library</h2>
+            <span className="text-xs text-slate-300/90 font-medium">{documents.length} items stored in MongoDB</span>
           </div>
 
           {/* Search & Filter Controls */}
@@ -153,7 +153,7 @@ export default function Dashboard({
             <div className="flex items-center space-x-2">
               {/* Search Bar */}
               <div className="relative">
-                <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
                   value={searchQuery}
@@ -162,7 +162,7 @@ export default function Dashboard({
                     setCurrentPage(1);
                   }}
                   placeholder="Search by name..."
-                  className="pl-9 pr-8 py-1.5 bg-slate-900/90 border border-slate-700/80 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 w-44 sm:w-56 transition"
+                  className="pl-9 pr-8 py-1.5 bg-slate-950/70 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-400 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 transition-all duration-200 w-44 sm:w-56"
                 />
                 {searchQuery && (
                   <button
@@ -175,7 +175,7 @@ export default function Dashboard({
               </div>
 
               {/* Filter Pills */}
-              <div className="flex items-center bg-slate-900 border border-slate-800 p-0.5 rounded-xl text-[11px]">
+              <div className="flex items-center bg-slate-950/80 border border-slate-800 p-0.5 rounded-xl text-[11px]">
                 <button
                   onClick={() => {
                     setFilterType('all');
@@ -183,8 +183,8 @@ export default function Dashboard({
                   }}
                   className={`px-2.5 py-1 rounded-lg transition ${
                     filterType === 'all'
-                      ? 'bg-indigo-600 text-white font-medium shadow-sm'
-                      : 'text-slate-400 hover:text-slate-200'
+                      ? 'bg-emerald-950/60 text-emerald-300 font-semibold border border-emerald-800/60 shadow-sm'
+                      : 'text-slate-300/90 font-medium hover:text-white'
                   }`}
                 >
                   All
@@ -196,8 +196,8 @@ export default function Dashboard({
                   }}
                   className={`px-2.5 py-1 rounded-lg transition ${
                     filterType === 'pdf'
-                      ? 'bg-indigo-600 text-white font-medium shadow-sm'
-                      : 'text-slate-400 hover:text-slate-200'
+                      ? 'bg-emerald-950/60 text-emerald-300 font-semibold border border-emerald-800/60 shadow-sm'
+                      : 'text-slate-300/90 font-medium hover:text-white'
                   }`}
                 >
                   PDFs
@@ -209,8 +209,8 @@ export default function Dashboard({
                   }}
                   className={`px-2.5 py-1 rounded-lg transition ${
                     filterType === 'image'
-                      ? 'bg-indigo-600 text-white font-medium shadow-sm'
-                      : 'text-slate-400 hover:text-slate-200'
+                      ? 'bg-emerald-950/60 text-emerald-300 font-semibold border border-emerald-800/60 shadow-sm'
+                      : 'text-slate-300/90 font-medium hover:text-white'
                   }`}
                 >
                   Images
@@ -252,10 +252,10 @@ export default function Dashboard({
           />
         ) : filteredDocuments.length === 0 ? (
           /* Filtered search yield zero results */
-          <div className="glass-panel p-10 rounded-2xl border border-slate-800 text-center space-y-3">
+          <div className="glass-panel p-10 rounded-2xl border border-slate-800 text-center space-y-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.12)]">
             <Filter className="w-8 h-8 mx-auto text-slate-500" />
-            <h3 className="text-sm font-semibold text-slate-200">No matching documents</h3>
-            <p className="text-xs text-slate-400 max-w-sm mx-auto">
+            <h3 className="text-sm font-semibold bg-gradient-to-r from-slate-100 to-slate-300 bg-clip-text text-transparent">No matching documents</h3>
+            <p className="text-xs text-slate-300/90 font-medium max-w-sm mx-auto">
               No documents matched your search for "{searchQuery}". Try a different keyword or reset filters.
             </p>
             <button
@@ -263,7 +263,7 @@ export default function Dashboard({
                 setSearchQuery('');
                 setFilterType('all');
               }}
-              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs rounded-xl border border-slate-700 transition"
+              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-xl border border-slate-700 transition active:scale-95"
             >
               Reset Filters
             </button>
@@ -278,15 +278,15 @@ export default function Dashboard({
                 return (
                   <div
                     key={docId}
-                    className="group relative glass-card p-5 rounded-2xl border border-slate-800 hover:border-indigo-500/50 transition-all hover:shadow-xl hover:shadow-indigo-500/5 flex flex-col justify-between"
+                    className="group relative glass-panel rounded-2xl p-5 flex flex-col justify-between shadow-[inset_0_1px_0_0_rgba(255,255,255,0.12)] hover:-translate-y-1 hover:shadow-2xl hover:shadow-emerald-500/10 hover:border-emerald-500/40 transition-all duration-300 ease-out"
                   >
                     <div>
                       <div className="flex items-start justify-between mb-3">
-                        <div className="p-3 rounded-xl bg-indigo-600/10 text-indigo-400 border border-indigo-500/20 group-hover:scale-110 transition">
+                        <div className="p-3 rounded-xl bg-slate-900/80 text-emerald-400 border border-slate-700/60 group-hover:scale-105 group-hover:border-emerald-500/40 group-hover:shadow-[0_0_15px_rgba(16,185,129,0.15)] transition-all duration-200 shadow-soft-xs">
                           {doc.fileType === 'pdf' ? (
-                            <FileText className="w-6 h-6" />
+                            <FileText className="w-6 h-6 text-emerald-400" />
                           ) : (
-                            <Image className="w-6 h-6 text-emerald-400" />
+                            <Image className="w-6 h-6 text-teal-400" />
                           )}
                         </div>
 
@@ -312,11 +312,11 @@ export default function Dashboard({
                               className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded-md text-[10px] font-semibold border ${
                                 isOcr
                                   ? 'bg-amber-950/40 text-amber-300 border-amber-800/40'
-                                  : 'bg-indigo-950/40 text-indigo-300 border-indigo-800/40'
+                                  : 'bg-emerald-950/40 text-emerald-300 border-emerald-800/40'
                               }`}
                               title={isOcr ? 'Text extracted using Tesseract OCR Fallback' : 'Native text extracted directly from PDF'}
                             >
-                              {isOcr ? <Scan className="w-3 h-3 text-amber-400" /> : <Sparkles className="w-3 h-3 text-indigo-400" />}
+                              {isOcr ? <Scan className="w-3 h-3 text-amber-400" /> : <Sparkles className="w-3 h-3 text-emerald-400" />}
                               <span>{isOcr ? 'Extracted via OCR' : 'Native Text'}</span>
                             </span>
                           )}
@@ -327,8 +327,8 @@ export default function Dashboard({
                         {doc.filename}
                       </h3>
 
-                      <div className="flex items-center space-x-2 text-xs text-slate-400 mb-4">
-                        <Clock className="w-3.5 h-3.5 text-slate-500" />
+                      <div className="flex items-center space-x-2 text-xs text-slate-300/90 font-medium mb-4">
+                        <Clock className="w-3.5 h-3.5 text-slate-400" />
                         <span>{new Date(doc.createdAt).toLocaleDateString()}</span>
                         <span>•</span>
                         <span className="uppercase">{doc.fileType}</span>
@@ -338,16 +338,16 @@ export default function Dashboard({
                     <div className="flex items-center justify-between pt-3 border-t border-slate-800/80">
                       <button
                         onClick={() => onSelectDocument && onSelectDocument(doc)}
-                        className="inline-flex items-center space-x-1.5 text-xs font-medium text-indigo-400 hover:text-indigo-300 transition"
+                        className="inline-flex items-center space-x-1.5 text-xs font-semibold text-emerald-400 hover:text-emerald-300 group-hover:text-emerald-300 transition duration-150"
                       >
                         <span>Open Workspace</span>
-                        <ArrowRight className="w-3.5 h-3.5" />
+                        <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
                       </button>
 
                       {onDeleteDocument && (
                         <button
                           onClick={() => setDeleteDocId(docId)}
-                          className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-950/40 rounded-lg transition"
+                          className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-red-950/40 rounded-lg active:scale-95 transition"
                           title="Delete Document"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -361,7 +361,7 @@ export default function Dashboard({
 
             {/* Pagination Controls */}
             {totalPages > 1 && (
-              <div className="flex items-center justify-between pt-4 border-t border-slate-800 text-xs text-slate-400">
+              <div className="flex items-center justify-between pt-4 border-t border-slate-800 text-xs text-slate-300/90 font-medium">
                 <span>
                   Showing Page <span className="font-semibold text-slate-200">{currentPage}</span> of{' '}
                   <span className="font-semibold text-slate-200">{totalPages}</span>
@@ -370,14 +370,14 @@ export default function Dashboard({
                   <button
                     onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
                     disabled={currentPage === 1}
-                    className="p-1.5 rounded-lg bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-300 disabled:opacity-40 transition"
+                    className="p-1.5 rounded-lg bg-slate-900 border border-slate-800 hover:bg-slate-800 hover:border-slate-700 text-slate-300 disabled:opacity-40 shadow-soft-xs active:scale-95 transition"
                   >
                     <ChevronLeft className="w-4 h-4" />
                   </button>
                   <button
                     onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
                     disabled={currentPage === totalPages}
-                    className="p-1.5 rounded-lg bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-300 disabled:opacity-40 transition"
+                    className="p-1.5 rounded-lg bg-slate-900 border border-slate-800 hover:bg-slate-800 hover:border-slate-700 text-slate-300 disabled:opacity-40 shadow-soft-xs active:scale-95 transition"
                   >
                     <ChevronRight className="w-4 h-4" />
                   </button>

@@ -9,9 +9,9 @@ export default function LoadingSpinner({ size = 'md', label = 'Loading...' }) {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center p-4 space-y-2 text-indigo-400">
+    <div className="flex flex-col items-center justify-center p-4 space-y-2 text-slate-300">
       <Loader2 className={`animate-spin ${sizeClasses[size] || sizeClasses.md}`} />
-      {label && <p className="text-sm font-medium text-slate-400 animate-pulse">{label}</p>}
+      {label && <p className="text-sm font-medium text-slate-300/90 animate-pulse">{label}</p>}
     </div>
   );
 }

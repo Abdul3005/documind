@@ -166,14 +166,14 @@ function AppContent() {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+      <div className="min-h-screen bg-transparent flex items-center justify-center">
         <LoadingSpinner size="lg" label="Restoring authenticated session..." />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-indigo-500 selection:text-white">
+    <div className="min-h-screen bg-transparent text-slate-100 flex flex-col selection:bg-emerald-950 selection:text-emerald-200 font-sans">
       {/* Top Navbar */}
       <Navbar activePage={activePage} onNavigate={setActivePage} />
 
