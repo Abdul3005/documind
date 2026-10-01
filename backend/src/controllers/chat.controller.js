@@ -3,6 +3,8 @@ import Message from '../models/Message.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { generateAnswer, generateSummary, UNGROUNDED_RESPONSE } from '../services/ai.service.js';
 import { retrieveRelevantChunks } from '../services/retrieval.service.js';
+import { rewriteQuery, hybridSearch } from '../services/advancedRetrieval.service.js';
+import { rerankChunks } from '../services/reranker.service.js';
 
 /**
  * @desc    Send question to document, execute RAG vector search, get AI answer & store in chat history
@@ -45,13 +47,54 @@ export const sendMessage = asyncHandler(async (req, res) => {
   // Sort chronologically for prompt builder
   const conversationHistory = previousMessages.reverse();
 
-  // 3. Vector search / RAG retrieval of Top-K relevant chunks scoped to documentId and userId
-  const retrievedChunks = await retrieveRelevantChunks({
-    documentId: id,
-    userId,
-    question: content.trim(),
-    topK: 3,
-  });
+  // 3. Advanced RAG Retrieval: Query Rewriting -> Hybrid Retrieval -> Multi-Signal Reranking
+  let retrievedChunks = [];
+  try {
+    const trimmedQuestion = content.trim();
+    const { rewrittenQuery } = await rewriteQuery({
+      query: trimmedQuestion,
+      conversationHistory,
+    });
+    const effectiveQuery = (rewrittenQuery && rewrittenQuery.trim().length > 0)
+      ? rewrittenQuery.trim()
+      : trimmedQuestion;
+
+    const hybridCandidates = await hybridSearch({
+      userId,
+      documentId: id,
+      query: effectiveQuery,
+      topK: 5,
+      vectorWeight: 0.7,
+      textWeight: 0.3,
+    });
+
+    if (hybridCandidates && hybridCandidates.length > 0) {
+      const reranked = await rerankChunks({
+        query: effectiveQuery,
+        chunks: hybridCandidates,
+        topK: 3,
+      });
+
+      retrievedChunks = reranked.map((c) => ({
+        chunkIndex: c.chunkIndex,
+        text: c.text,
+        similarity: typeof c.rerankScore === 'number'
+          ? c.rerankScore
+          : (typeof c.hybridScore === 'number' ? c.hybridScore : (c.similarity ?? 0)),
+        rerankScore: c.rerankScore,
+        hybridScore: c.hybridScore,
+      }));
+    }
+  } catch (advancedRagError) {
+    console.warn('[Chat Controller Warning] Advanced RAG pipeline failed, falling back to baseline retrieval:', advancedRagError.message);
+    // Safe fallback to baseline retrieval
+    retrievedChunks = await retrieveRelevantChunks({
+      documentId: id,
+      userId,
+      question: content.trim(),
+      topK: 3,
+    });
+  }
 
   const RAG_MIN_RELEVANCE_THRESHOLD = parseFloat(process.env.RAG_MIN_RELEVANCE_THRESHOLD || '0.15');
   const maxSimilarity = retrievedChunks.length > 0

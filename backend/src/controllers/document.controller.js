@@ -27,7 +27,8 @@ export const uploadDocument = asyncHandler(async (req, res) => {
     });
   }
 
-  const document = await createDocumentRecord(req.file, userId);
+  const chunkPreset = req.body?.chunkPreset ? Number(req.body.chunkPreset) : undefined;
+  const document = await createDocumentRecord(req.file, userId, { chunkPreset });
 
   res.status(201).json({
     success: true,

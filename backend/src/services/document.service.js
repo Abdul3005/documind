@@ -3,13 +3,13 @@ import fs from 'fs';
 import Document from '../models/Document.js';
 import Message from '../models/Message.js';
 import { extractText } from './ocr.service.js';
-import { chunkText } from './chunking.service.js';
+import { chunkText, splitTextByTokens, CHUNK_PRESETS } from './textSplitter.service.js';
 import { generateBatchEmbeddings, generateMockVector } from './embedding.service.js';
 
 /**
  * Service to process document upload, run OCR/PDF text extraction, chunking, RAG embeddings, and manage Document records scoped to a specific User.
  */
-export const createDocumentRecord = async (file, userId) => {
+export const createDocumentRecord = async (file, userId, options = {}) => {
   if (!file) {
     const error = new Error('No file uploaded.');
     error.statusCode = 400;
@@ -42,7 +42,19 @@ export const createDocumentRecord = async (file, userId) => {
     // 3. Chunk text and generate embeddings for RAG pipeline
     if (extractedText && extractedText.trim().length > 0) {
       console.log(`[Document Service] Chunking & generating embeddings for document ${document._id}...`);
-      const rawChunks = chunkText(extractedText, 800, 150);
+      
+      let rawChunks = [];
+      const requestedPreset = options.chunkPreset ?? options.preset ?? (process.env.CHUNK_PRESET ? Number(process.env.CHUNK_PRESET) : 512);
+      const numericPreset = Number(requestedPreset);
+
+      if (CHUNK_PRESETS[numericPreset]) {
+        rawChunks = splitTextByTokens(extractedText, { preset: numericPreset });
+      } else if (options.chunkSize || options.chunkOverlap) {
+        rawChunks = chunkText(extractedText, options.chunkSize || 800, options.chunkOverlap || 150);
+      } else {
+        // Safe default: 512 token preset (champion configuration from Week 4 evaluation)
+        rawChunks = splitTextByTokens(extractedText, { preset: 512 });
+      }
       if (rawChunks.length > 0) {
         const chunkTexts = rawChunks.map((c) => c.text);
         let embeddings = [];

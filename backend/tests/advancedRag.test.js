@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import request from 'supertest';
+import PDFDocument from 'pdfkit';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import mongoose from 'mongoose';
+import app from '../src/app.js';
 import Document from '../src/models/Document.js';
 import User from '../src/models/User.js';
 import {
@@ -17,10 +22,18 @@ import {
 } from '../src/services/advancedRetrieval.service.js';
 import { rerankChunks, calculateProximityScore } from '../src/services/reranker.service.js';
 import { generateEmbedding } from '../src/services/embedding.service.js';
+import { generateToken } from '../src/services/auth.service.js';
+import { createDocumentRecord } from '../src/services/document.service.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const sampleFixture = path.join(__dirname, 'fixtures/sample_text.pdf');
 
 let mongoServer;
 let userAId;
 let userBId;
+let tokenA;
+let tokenB;
 let docAId;
 let docBId;
 
@@ -55,6 +68,9 @@ beforeEach(async () => {
     password: 'Password123',
   });
   userBId = userB._id.toString();
+
+  tokenA = generateToken(userAId);
+  tokenB = generateToken(userBId);
 
   // Create Document A for User A with embedded chunks
   const chunk0 = 'DocuMind V2 implements an advanced hybrid RAG architecture with configurable token chunking.';
@@ -317,6 +333,143 @@ describe('Phase 1: Advanced RAG Architecture Setup', () => {
       });
 
       expect(reranked.length).toBe(1);
+    });
+  });
+
+  describe('5. Document Ingestion Chunk Presets (POST /api/documents/upload)', () => {
+    const createPdf = (text) => {
+      return new Promise((resolve, reject) => {
+        const pdf = new PDFDocument();
+        const buffers = [];
+        pdf.on('data', (c) => buffers.push(c));
+        pdf.on('end', () => resolve(Buffer.concat(buffers)));
+        pdf.on('error', reject);
+        pdf.text(text);
+        pdf.end();
+      });
+    };
+
+    it('should ingest document with 256-token chunk preset via upload API', async () => {
+      const pdfBuffer = await createPdf('Advanced RAG token chunking specification. '.repeat(40));
+      const res = await request(app)
+        .post('/api/documents/upload')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .field('chunkPreset', 256)
+        .attach('file', pdfBuffer, 'doc_256.pdf');
+
+      expect(res.status).toBe(201);
+      expect(res.body.success).toBe(true);
+      expect(res.body.document.status).toBe('ready');
+
+      const savedDoc = await Document.findById(res.body.document.id);
+      expect(savedDoc.chunks.length).toBeGreaterThan(0);
+      expect(savedDoc.chunks[0]).toHaveProperty('offsetStart');
+    });
+
+    it('should ingest document with 512-token chunk preset via upload API', async () => {
+      const pdfBuffer = await createPdf('Advanced RAG 512 token chunking specification. '.repeat(40));
+      const res = await request(app)
+        .post('/api/documents/upload')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .field('chunkPreset', 512)
+        .attach('file', pdfBuffer, 'doc_512.pdf');
+
+      expect(res.status).toBe(201);
+      expect(res.body.document.status).toBe('ready');
+
+      const savedDoc = await Document.findById(res.body.document.id);
+      expect(savedDoc.chunks.length).toBeGreaterThan(0);
+    });
+
+    it('should ingest document with 1024-token chunk preset via upload API', async () => {
+      const pdfBuffer = await createPdf('Advanced RAG 1024 token chunking specification. '.repeat(80));
+      const res = await request(app)
+        .post('/api/documents/upload')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .field('chunkPreset', 1024)
+        .attach('file', pdfBuffer, 'doc_1024.pdf');
+
+      expect(res.status).toBe(201);
+      expect(res.body.document.status).toBe('ready');
+
+      const savedDoc = await Document.findById(res.body.document.id);
+      expect(savedDoc.chunks.length).toBeGreaterThan(0);
+    });
+
+    it('should safely fall back to default 512 preset on invalid chunkPreset', async () => {
+      const pdfBuffer = await createPdf('Advanced RAG invalid chunk preset test text. '.repeat(30));
+      const res = await request(app)
+        .post('/api/documents/upload')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .field('chunkPreset', 'invalid_999')
+        .attach('file', pdfBuffer, 'doc_invalid.pdf');
+
+      expect(res.status).toBe(201);
+      expect(res.body.document.status).toBe('ready');
+
+      const savedDoc = await Document.findById(res.body.document.id);
+      expect(savedDoc.chunks.length).toBeGreaterThan(0);
+    });
+
+    it('should default to 512 token preset when no chunkPreset option is specified', async () => {
+      const pdfBuffer = await createPdf('Advanced RAG default chunk preset test text. '.repeat(30));
+      const res = await request(app)
+        .post('/api/documents/upload')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .attach('file', pdfBuffer, 'doc_default.pdf');
+
+      expect(res.status).toBe(201);
+      expect(res.body.document.status).toBe('ready');
+
+      const savedDoc = await Document.findById(res.body.document.id);
+      expect(savedDoc.chunks.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('6. Production Chat Pipeline Advanced RAG Integration (POST /api/documents/:id/messages)', () => {
+    it('should route user message through query rewriting, hybrid retrieval, and reranking', async () => {
+      const res = await request(app)
+        .post(`/api/documents/${docAId}/messages`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ content: 'What is Q3 revenue reached?' });
+
+      expect(res.status).toBe(201);
+      expect(res.body.success).toBe(true);
+      expect(res.body.assistantMessage).toBeDefined();
+      expect(res.body.assistantMessage.content).toBeDefined();
+      expect(Array.isArray(res.body.assistantMessage.sources)).toBe(true);
+      expect(res.body.assistantMessage.sources.length).toBeGreaterThan(0);
+      expect(res.body.assistantMessage.sources[0]).toHaveProperty('chunkIndex');
+      expect(res.body.assistantMessage.sources[0]).toHaveProperty('similarity');
+    });
+
+    it('should resolve conversational pronouns through query rewriter in chat history', async () => {
+      // First turn
+      await request(app)
+        .post(`/api/documents/${docAId}/messages`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ content: 'Tell me about the annual financial review' });
+
+      // Follow-up with pronoun 'it'
+      const followUp = await request(app)
+        .post(`/api/documents/${docAId}/messages`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ content: 'What was its revenue?' });
+
+      expect(followUp.status).toBe(201);
+      expect(followUp.body.success).toBe(true);
+      expect(followUp.body.assistantMessage.sources.length).toBeGreaterThan(0);
+      expect(followUp.body.assistantMessage.sources[0].chunkIndex).toBe(1);
+    });
+
+    it('should enforce strict ownership isolation and prevent unauthorized access to another user document', async () => {
+      const res = await request(app)
+        .post(`/api/documents/${docAId}/messages`)
+        .set('Authorization', `Bearer ${tokenB}`)
+        .send({ content: 'What is Q3 revenue?' });
+
+      expect(res.status).toBe(404);
+      expect(res.body.success).toBe(false);
     });
   });
 });
