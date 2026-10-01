@@ -62,7 +62,7 @@ beforeEach(async () => {
   userBId = resB.body.user.id;
 
   // Create RAG Document for User A with embedded chunks
-  const chunk0Text = 'DocuMind V2 implements Retrieval-Augmented Generation (RAG) architecture with Gemini text-embedding-004 vectors.';
+  const chunk0Text = 'DocuMind V2 implements Retrieval-Augmented Generation (RAG) architecture with Gemini gemini-embedding-001 vectors.';
   const chunk1Text = 'Financial summary for User A: Q3 revenue grew by 45% reaching $1.2 million with 85% gross profit margin.';
   const chunk2Text = 'User A security guidelines state that multi-tenant data isolation must prevent cross-user data exposure.';
 

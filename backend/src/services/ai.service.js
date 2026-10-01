@@ -285,10 +285,7 @@ const callGroq = async (prompt, preferredModel = 'llama-3.1-8b-instant') => {
     preferredModel,
     'llama-3.1-8b-instant',
     'llama-3.3-70b-versatile',
-    'llama3-8b-8192',
-    'llama3-70b-8192',
-    'gemma2-9b-it',
-    'openai/gpt-oss-20b',
+    'mixtral-8x7b-32768',
   ].filter(Boolean);
 
   // De-duplicate candidate models preserving order

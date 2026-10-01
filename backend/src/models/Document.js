@@ -74,6 +74,10 @@ const documentSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    embeddingModel: {
+      type: String,
+      default: 'gemini-embedding-001',
+    },
   },
   {
     timestamps: true, // Automatically manages createdAt and updatedAt

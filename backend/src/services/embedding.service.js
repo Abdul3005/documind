@@ -5,7 +5,7 @@ import { EMBEDDING_BATCH_SIZE } from '../config/limits.js';
  * Service for generating text embeddings matching MongoDB Atlas vector index.
  * Supports:
  * 1. Hugging Face Inference API (BAAI/bge-base-en-v1.5) via HF_TOKEN
- * 2. Google Gemini text-embedding-004 via GEMINI_API_KEY / LLM_API_KEY
+ * 2. Google Gemini gemini-embedding-001 via GEMINI_API_KEY / LLM_API_KEY
  * Strictly outputs 768-dimensional normalized floating point vectors.
  */
 
@@ -52,18 +52,19 @@ export const generateMockVector = (text, dim = VECTOR_DIMENSION) => {
 };
 
 /**
- * Helper to call Google Gemini embedding endpoint
+ * Helper to call Google Gemini embedding endpoint (gemini-embedding-001)
  */
 const callGeminiEmbedding = async (text, apiKey) => {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key=${apiKey}`;
   let response;
   try {
     response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'models/text-embedding-004',
+        model: 'models/gemini-embedding-001',
         content: { parts: [{ text: text || '' }] },
+        outputDimensionality: VECTOR_DIMENSION,
       }),
     });
   } catch (fetchErr) {
@@ -85,7 +86,9 @@ const callGeminiEmbedding = async (text, apiKey) => {
     throw new Error(`Invalid Gemini embedding response format or dimension mismatch: expected ${VECTOR_DIMENSION}`);
   }
 
-  return values;
+  // Guarantee strict unit-normalization (||v|| = 1.0)
+  const norm = Math.sqrt(values.reduce((sum, val) => sum + val * val, 0)) || 1.0;
+  return values.map((v) => v / norm);
 };
 
 /**
@@ -143,7 +146,7 @@ export const generateEmbedding = async (text) => {
       return values;
     }
 
-    // Strategy 2: If GEMINI_API_KEY or compatible LLM_API_KEY is configured, use Gemini text-embedding-004
+    // Strategy 2: If GEMINI_API_KEY or compatible LLM_API_KEY is configured, use Gemini gemini-embedding-001
     if (geminiKey) {
       return await callGeminiEmbedding(text, geminiKey);
     }
