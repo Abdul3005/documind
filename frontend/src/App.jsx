@@ -60,6 +60,7 @@ function AppContent() {
   const { user, isAuthenticated, loading: authLoading, purgeDocumentState } = useAuth();
   const userId = user?.id || user?._id || null;
   const prevUserIdRef = useRef(userId);
+  const isInitialAuthRef = useRef(true);
 
   const savedSession = safeGetSavedSession();
   const [selectedDocId, setSelectedDocId] = useState(savedSession.docId);
@@ -67,23 +68,52 @@ function AppContent() {
 
   // Reset all cached document state and navigation whenever userId changes or on logout
   useEffect(() => {
-    if (prevUserIdRef.current !== userId) {
+    if (authLoading) return;
+
+    const prevUserId = prevUserIdRef.current;
+
+    // 1. Initial authentication hydration (browser refresh / initial app load):
+    // null -> authenticated userId. Preserve restored session state and do NOT treat as an account switch.
+    if (isInitialAuthRef.current) {
+      isInitialAuthRef.current = false;
+      prevUserIdRef.current = userId;
+
+      if (!isAuthenticated) {
+        setSelectedDocId(null);
+        safeSaveSession(null);
+        if (purgeDocumentState) {
+          purgeDocumentState();
+        }
+        if (activePage !== 'register') {
+          setActivePage('login');
+        }
+      }
+      return;
+    }
+
+    // 2. Explicit logout: authenticated userId -> null
+    if (prevUserId && !userId) {
       setSelectedDocId(null);
       safeSaveSession(null);
       if (purgeDocumentState) {
         purgeDocumentState();
       }
-      if (!isAuthenticated) {
-        if (activePage !== 'register') {
-          setActivePage('login');
-        }
-      } else {
-        // Fresh login: always open dashboard cleanly
-        setActivePage('dashboard');
+      if (activePage !== 'register') {
+        setActivePage('login');
       }
-      prevUserIdRef.current = userId;
     }
-  }, [userId, isAuthenticated, purgeDocumentState, activePage]);
+    // 3. Account switch (userA -> userB) or in-app fresh login (null -> userId):
+    else if (prevUserId !== userId) {
+      setSelectedDocId(null);
+      safeSaveSession(null);
+      if (purgeDocumentState) {
+        purgeDocumentState();
+      }
+      setActivePage('dashboard');
+    }
+
+    prevUserIdRef.current = userId;
+  }, [userId, authLoading, isAuthenticated, purgeDocumentState, activePage]);
 
   // Sync page state when auth status changes
   useEffect(() => {

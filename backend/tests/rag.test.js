@@ -11,6 +11,7 @@ import { generateEmbedding, generateBatchEmbeddings } from '../src/services/embe
 import { cosineSimilarity, retrieveRelevantChunks } from '../src/services/retrieval.service.js';
 import { buildPrompt, buildSummaryPrompt, generateSummary, UNGROUNDED_RESPONSE } from '../src/services/ai.service.js';
 import { generateToken } from '../src/services/auth.service.js';
+import { isDocumentOverviewQuery } from '../src/controllers/chat.controller.js';
 
 let mongoServer;
 let tokenA;
@@ -396,5 +397,118 @@ describe('Phase 4: RAG Architecture & Vector Search Pipeline', () => {
       process.env.NODE_ENV = originalNodeEnv;
       process.env.LLM_API_KEY = originalKey;
     }, 15000);
+  });
+
+  describe('8. Document Overview / Broad Query Handling (Fix #2)', () => {
+    describe('Intent Detection (isDocumentOverviewQuery)', () => {
+      it('should classify canonical overview queries as overview', () => {
+        const positives = [
+          'What is in this document?',
+          'what is this document about',
+          'What does this document contain?',
+          'Summarize this document.',
+          'Give me an overview of this document.',
+          'What are the main topics in this document?',
+          'Can you summarize the document?',
+          'main topics in this document',
+          'what is in the document',
+          'overview of this document',
+          'Document overview',
+          'What does this document discuss?',
+        ];
+        for (const query of positives) {
+          expect(isDocumentOverviewQuery(query)).toBe(true);
+        }
+      });
+
+      it('should NOT classify specific domain questions or conclusions as overview', () => {
+        const negatives = [
+          'What is probability?',
+          'Explain standard deviation.',
+          'What is the definition of mean?',
+          'What is the conclusion of chapter 3?',
+          'What is the probability of event A?',
+          'When was this experiment performed?',
+          'What are the main findings or conclusions?',
+          'is there a document attached?',
+          'find the document id',
+          'summarize the results in table 2',
+        ];
+        for (const query of negatives) {
+          expect(isDocumentOverviewQuery(query)).toBe(false);
+        }
+      });
+    });
+
+    describe('End-to-End Chat Overview Path (POST /api/documents/:id/messages)', () => {
+      it('should answer broad overview question ("What is in this document?") without ungrounded refusal', async () => {
+        const res = await request(app)
+          .post(`/api/documents/${docAId}/messages`)
+          .set('Authorization', `Bearer ${tokenA}`)
+          .send({ content: 'What is in this document?' });
+
+        expect(res.status).toBe(201);
+        expect(res.body.success).toBe(true);
+        expect(res.body.assistantMessage).toBeDefined();
+        expect(res.body.assistantMessage.content).not.toBe(UNGROUNDED_RESPONSE);
+        expect(res.body.assistantMessage.content.length).toBeGreaterThan(10);
+        expect(Array.isArray(res.body.assistantMessage.sources)).toBe(true);
+        expect(res.body.assistantMessage.sources.length).toBeGreaterThan(0);
+      });
+
+      it('should answer "What are the main topics in this document?" via overview path', async () => {
+        const res = await request(app)
+          .post(`/api/documents/${docAId}/messages`)
+          .set('Authorization', `Bearer ${tokenA}`)
+          .send({ content: 'What are the main topics in this document?' });
+
+        expect(res.status).toBe(201);
+        expect(res.body.success).toBe(true);
+        expect(res.body.assistantMessage.content).not.toBe(UNGROUNDED_RESPONSE);
+      });
+
+      it('should preserve UNGROUNDED_RESPONSE for normal low-relevance queries', async () => {
+        const res = await request(app)
+          .post(`/api/documents/${docAId}/messages`)
+          .set('Authorization', `Bearer ${tokenA}`)
+          .send({ content: 'what is quantum gravity teleportation' });
+
+        expect(res.status).toBe(201);
+        expect(res.body.success).toBe(true);
+        expect(res.body.assistantMessage.content).toBe(UNGROUNDED_RESPONSE);
+        expect(res.body.assistantMessage.sources.length).toBe(0);
+      });
+
+      it('should forbid User B from accessing User A document overview (strict multi-tenant isolation)', async () => {
+        const res = await request(app)
+          .post(`/api/documents/${docAId}/messages`)
+          .set('Authorization', `Bearer ${tokenB}`)
+          .send({ content: 'What is in this document?' });
+
+        expect(res.status).toBe(404);
+        expect(res.body.success).toBe(false);
+      });
+
+      it('should safely return ungrounded response if document has empty extractedText', async () => {
+        const emptyDoc = await Document.create({
+          userId: userAId,
+          filename: 'empty.pdf',
+          fileType: 'pdf',
+          extractedText: '   ',
+          extractionMethod: 'text',
+          status: 'ready',
+          chunks: [],
+        });
+
+        const res = await request(app)
+          .post(`/api/documents/${emptyDoc._id}/messages`)
+          .set('Authorization', `Bearer ${tokenA}`)
+          .send({ content: 'What is in this document?' });
+
+        expect(res.status).toBe(201);
+        expect(res.body.assistantMessage.content).toBe(UNGROUNDED_RESPONSE);
+        expect(res.body.assistantMessage.sources.length).toBe(0);
+      });
+    });
   });
 });

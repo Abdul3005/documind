@@ -168,11 +168,114 @@ export const recognizeWithGeminiVision = async (imageBuffer) => {
   return null;
 };
 
+/**
+ * Space-aware page renderer for pdf-parse.
+ * Preserves line breaks and computes horizontal coordinate deltas between adjacent
+ * text items on the same baseline to restore natural word spacing.
+ */
+export const renderPageWithWordSpacing = async (pageData) => {
+  const textContent = await pageData.getTextContent({ normalizeWhitespace: false });
+  let lastY;
+  let lastX = 0;
+  let text = '';
+
+  for (const item of textContent.items) {
+    const str = item.str;
+    if (!str) continue;
+
+    const curX = item.transform[4];
+    const curY = item.transform[5];
+
+    if (lastY === undefined) {
+      text += str;
+    } else if (Math.abs(curY - lastY) > 2.0 || (curX < lastX - 30 && Math.abs(curY - lastY) > 0.5)) {
+      // Significant vertical displacement or carriage return to the left margin -> line break
+      text += (text.endsWith('\n') ? '' : '\n') + str;
+    } else {
+      // Same baseline: compute horizontal distance between right edge of previous item and start of current item
+      const gap = curX - lastX;
+      const prevEndsWithSpace = /\s$/.test(text);
+      const currStartsWithSpace = /^\s/.test(str);
+      const isAttachingPunctuation = /^[,\.\?!:;\)\]\}%°]/.test(str);
+      const prevEndsWithOpeningBracket = /[\(\[\{\/\\\$]$/.test(text.trimEnd());
+
+      // Space threshold: standard font space glyph width is typically >= 1.8pt or ~18% of item height
+      const spaceThreshold = Math.max(1.8, (item.height || 9) * 0.18);
+
+      if (
+        !prevEndsWithSpace &&
+        !currStartsWithSpace &&
+        !isAttachingPunctuation &&
+        !prevEndsWithOpeningBracket &&
+        gap >= spaceThreshold
+      ) {
+        text += ' ' + str;
+      } else {
+        text += str;
+      }
+    }
+
+    lastY = curY;
+    lastX = curX + (item.width || 0);
+  }
+
+  return text;
+};
+
+/**
+ * Validates the whitespace health of extracted PDF text.
+ * Detects defective text layers where text items were joined without spaces
+ * (e.g. space ratio < 0.035 or abnormal word lengths on substantial text).
+ *
+ * @param {string} text - Extracted raw text
+ * @param {Object} [options]
+ * @param {number} [options.minRatio] - Minimum allowable space-to-character ratio (default: 0.035)
+ * @param {number} [options.maxAvgWordLen] - Maximum allowable average word length in characters (default: 35)
+ * @returns {boolean} True if whitespace appears healthy
+ */
+export const isWhitespaceHealthy = (text, options = {}) => {
+  if (!text || typeof text !== 'string') return false;
+  const trimmed = text.trim();
+  if (trimmed.length < 50) return false;
+
+  // Short snippets (< 80 chars) may vary, require at least one whitespace character
+  if (trimmed.length < 80) {
+    return /\s/.test(trimmed);
+  }
+
+  const minRatio = options.minRatio ?? parseFloat(process.env.MIN_PDF_WHITESPACE_RATIO || '0.035');
+  const maxAvgWordLen = options.maxAvgWordLen ?? parseFloat(process.env.MAX_PDF_AVG_WORD_LENGTH || '35');
+
+  const whitespaceMatches = trimmed.match(/\s/g) || [];
+  const spaceRatio = whitespaceMatches.length / trimmed.length;
+
+  const tokens = trimmed.split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return false;
+
+  const nonWhitespaceLength = trimmed.length - whitespaceMatches.length;
+  const avgWordLen = nonWhitespaceLength / tokens.length;
+  const maxWordLen = tokens.reduce((max, t) => Math.max(max, t.length), 0);
+
+  // Defective condition 1: Abnormally low whitespace ratio across substantial text
+  if (spaceRatio < minRatio) {
+    return false;
+  }
+
+  // Defective condition 2: Massive unbroken word tokens
+  if (avgWordLen > maxAvgWordLen && maxWordLen > 45) {
+    return false;
+  }
+
+  return true;
+};
+
 export const ocrService = {
   isValidImageBuffer,
   getPdfPageCount,
   extractImagesFromPdf,
   recognizeWithGeminiVision,
+  renderPageWithWordSpacing,
+  isWhitespaceHealthy,
   extractText: null, // assigned below
 };
 
@@ -218,25 +321,36 @@ export const extractText = async (filePath, fileType) => {
         throw err;
       }
 
-      // Stage 1: Fast direct text extraction via pdf-parse
+      // Stage 1: Fast direct text extraction via pdf-parse with space-aware pagerender
       let textFromPdf = '';
       try {
-        const pdfData = await pdfParse(new Uint8Array(dataBuffer));
+        const renderFn = ocrService.renderPageWithWordSpacing || renderPageWithWordSpacing;
+        const pdfData = await pdfParse(new Uint8Array(dataBuffer), { pagerender: renderFn });
         textFromPdf = pdfData.text ? pdfData.text.trim() : '';
       } catch (pdfErr) {
         console.warn(`[OCR Service] pdf-parse failed: ${pdfErr.message}. Falling back to OCR.`);
       }
 
-      // If pdf-parse extracted 50 or more characters, accept as valid text layer
-      if (textFromPdf.length >= 50) {
+      // Check extracted text quantity and whitespace health
+      const checkWhitespaceFn = ocrService.isWhitespaceHealthy || isWhitespaceHealthy;
+      const hasHealthyWhitespace = checkWhitespaceFn(textFromPdf);
+
+      // If pdf-parse extracted 50 or more characters AND has healthy whitespace, accept as valid text layer
+      if (textFromPdf.length >= 50 && hasHealthyWhitespace) {
         return {
           extractedText: textFromPdf,
           extractionMethod: 'text',
         };
       }
 
-      // Stage 2: OCR Fallback for scanned PDFs (< 50 chars or missing text layer)
-      console.log(`[OCR Service] PDF text layer insufficient (${textFromPdf.length} chars). Initiating Tesseract OCR fallback...`);
+      // Stage 2: OCR Fallback for scanned PDFs or defective whitespace text layers
+      if (textFromPdf.length >= 50 && !hasHealthyWhitespace) {
+        console.warn(
+          `[OCR Service Warning] PDF text layer has defective whitespace (${textFromPdf.length} chars, missing spaces). Initiating OCR fallback...`
+        );
+      } else {
+        console.log(`[OCR Service] PDF text layer insufficient (${textFromPdf.length} chars). Initiating Tesseract OCR fallback...`);
+      }
 
       const images = await extractImagesFromPdf(dataBuffer);
       let ocrText = '';

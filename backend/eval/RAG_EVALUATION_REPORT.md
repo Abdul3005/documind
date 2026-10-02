@@ -1,9 +1,9 @@
 # DocuMind RAG Evaluation Report: Baseline vs. Advanced RAG Architecture
 
-**Evaluation Run Date:** 2026-10-01  
-**Benchmark Dataset:** 50 Curated Multi-Domain QA Pairs (`eval/dataset.json`)  
-**Evaluator Engine:** DocuMind DeepEval / RAGAS Compliance Harness (`eval/evaluateRAG.js`)  
-**Test Corpus Domains:** Technical Specifications, Commercial Contracts (MSA), Financial/OCR Disclosures, Handwritten Notes  
+**Evaluation Run Date:** 2026-10-02
+**Benchmark Dataset:** 50 Curated Multi-Domain QA Pairs (`eval/dataset.json`)
+**Evaluator Engine:** DocuMind DeepEval / RAGAS Compliance Harness (`eval/evaluateRAG.js`)
+**Test Corpus Domains:** Technical Specifications, Commercial Contracts (MSA), Financial/OCR Disclosures, Handwritten Notes
 
 ---
 
@@ -49,9 +49,9 @@ Tuning parameter $K$ using the champion configuration (**Advanced RAG 512 tokens
 ### Top-K Empirical Trade-Offs & Production Selection:
 1. **$K = 1$**:
    - Delivers perfect Precision (100.0%) and high Faithfulness, but suffers when complex questions (e.g. multi-step calculations, multi-clause contracts) require information spanning consecutive paragraphs.
-2. **$K = 3$ (Champion Selection)**:
-   - **Optimal production sweet spot**: Delivers 100.0% Context Recall, 100.0% Context Precision, 96.0% Faithfulness, and 47.9% Answer Relevance.
-   - Fits cleanly within LLM context window constraints without introducing extraneous noise chunks or token inflation.
+2. **$K = 3$ (Selected Production Configuration)**:
+   - **Production sweet spot**: Selected because $K = 3$, $K = 5$, and $K = 10$ produced identical measured evaluation metrics (100.0% Context Recall, 100.0% Context Precision, 96.0% Faithfulness, and 47.9% Answer Relevance), while $K = 3$ uses significantly less retrieved context and fewer tokens.
+   - Fits cleanly within LLM context window constraints without introducing extraneous noise chunks, latency, or token inflation.
 3. **$K = 5$ & $K = 10$**:
    - Context Recall remains saturated at 100.0%, but retrieving 5 or 10 chunks increases prompt token overhead by 66% to 230%, slightly reducing context precision density and increasing latency without conferring recall benefits on single/dual-topic queries.
    - **Production Decision**: $K = 3$ is empirically selected as the default retrieval depth.

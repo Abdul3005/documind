@@ -161,4 +161,69 @@ describe('PDF Text Extraction & OCR Fallback Pipeline', () => {
       pageCountSpy.mockRestore();
     }
   });
+
+  it('should preserve word spacing in coordinate-positioned PDFs without smushing words', async () => {
+    // Generate coordinate-positioned PDF with individual words on the same baseline
+    const createCoordinatePdfBuffer = () => {
+      return new Promise((resolve, reject) => {
+        const doc = new PDFDocument({ margin: 50 });
+        const buffers = [];
+        doc.on('data', (chunk) => buffers.push(chunk));
+        doc.on('end', () => resolve(Buffer.concat(buffers)));
+        doc.on('error', (err) => reject(err));
+
+        const y = 100;
+        doc.text('Inferential', 72, y, { continued: false });
+        doc.text('statistics', 140, y, { continued: false });
+        doc.text('involves', 200, y, { continued: false });
+        doc.text('making', 255, y, { continued: false });
+        doc.text('decisions', 310, y, { continued: false });
+        doc.text('and', 375, y, { continued: false });
+        doc.text('drawing', 405, y, { continued: false });
+        doc.text('conclusions.', 460, y, { continued: false });
+        doc.end();
+      });
+    };
+
+    const coordBuffer = await createCoordinatePdfBuffer();
+    const filePath = path.join(tempDir, 'coordinate_positioned.pdf');
+    fs.writeFileSync(filePath, coordBuffer);
+
+    const result = await extractText(filePath, 'pdf');
+
+    expect(result.extractionMethod).toBe('text');
+    expect(result.extractedText).toContain('Inferential statistics involves making decisions and drawing conclusions.');
+    expect(result.extractedText).not.toContain('Inferentialstatisticsinvolvesmakingdecisions');
+  });
+
+  it('should accurately evaluate whitespace health with isWhitespaceHealthy', async () => {
+    const { isWhitespaceHealthy } = await import('../src/services/ocr.service.js');
+
+    // Healthy natural text with normal word spacing
+    const healthy = 'Inferential statistics involves making decisions and drawing conclusions based on sample information.';
+    expect(isWhitespaceHealthy(healthy)).toBe(true);
+
+    // Defective text with smushed words and no whitespace
+    const defective = 'InferentialstatisticsinvolvesmakingdecisionsanddrawingconclusionsbasedonsampleinformationUnlikedescriptivestatisticswhichonlydescribethedatainferentialstatisticsallowyoutomakeinferencesanddecisionsbeyondtheimmediatedata';
+    expect(isWhitespaceHealthy(defective)).toBe(false);
+
+    // Short text under 50 characters returns false
+    expect(isWhitespaceHealthy('Too short')).toBe(false);
+  });
+
+  it('should not introduce excessive or duplicate spaces in already-correct PDFs', async () => {
+    const normalText = 'This is an already-correct paragraph with (parenthetical notes), punctuation, and numbers: 100%.';
+    const pdfBuffer = await createTextPdfBuffer(normalText);
+    const filePath = path.join(tempDir, 'already_correct.pdf');
+    fs.writeFileSync(filePath, pdfBuffer);
+
+    const result = await extractText(filePath, 'pdf');
+
+    expect(result.extractionMethod).toBe('text');
+    // Ensure punctuation is not erroneously preceded by space
+    expect(result.extractedText).not.toContain('( ');
+    expect(result.extractedText).not.toContain(' ,');
+    expect(result.extractedText).not.toContain(' .');
+    expect(result.extractedText).toContain('already-correct');
+  });
 });

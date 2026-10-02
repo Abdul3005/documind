@@ -102,13 +102,54 @@ Executive Summary:`;
 };
 
 /**
+ * Builds prompt for document-level overview for broad queries.
+ */
+export const buildOverviewPrompt = ({
+  documentText = '',
+  conversationHistory = [],
+  question = '',
+} = {}) => {
+  const safeQuestion = sanitizeDelimiters(question);
+  const rawText =
+    typeof documentText === 'string'
+      ? documentText
+      : documentText?.documentText || JSON.stringify(documentText || '');
+  const safeDoc = sanitizeDelimiters(rawText);
+  const trimmed =
+    safeDoc.length > 6000 ? safeDoc.substring(0, 6000) + '...' : safeDoc;
+
+  let historyText = '';
+  if (Array.isArray(conversationHistory) && conversationHistory.length > 0) {
+    historyText = conversationHistory
+      .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${sanitizeDelimiters(m.content)}`)
+      .join('\n');
+  }
+
+  return `You are DocuMind, an expert document analyst. Provide a clear, natural-language overview of the document based ONLY on the provided text below.
+Guidelines:
+- Base your answer strictly on the provided document text.
+- Do not use outside knowledge or extrapolate beyond what is explicitly written.
+- If the text does not contain enough information to provide an overview, respond EXACTLY with: 'The requested information is not contained in the provided document.'
+- Synthesize a helpful, grounded overview. Do NOT simply dump raw text chunks.
+
+<<<DOCUMENT>>>
+${trimmed}
+<<<END DOCUMENT>>>
+${historyText ? `\nConversation History:\n${historyText}\n` : ''}
+User Question: ${safeQuestion}
+
+Helpful & Grounded Overview:`;
+};
+
+/**
  * Deterministic offline / dev / test response generator.
  * Used during test suites or as an emergency fallback when all external APIs are rate-limited or down.
  */
 export const generateMockDevResponse = (
   documentText = '',
   question = '',
-  isSummary = false
+  isSummary = false,
+  isOverview = false
 ) => {
   const safeDoc = typeof documentText === 'string' ? documentText : JSON.stringify(documentText || '');
 
@@ -128,6 +169,11 @@ export const generateMockDevResponse = (
     }
     const preview = safeDoc.substring(0, 250).replace(/\s+/g, ' ').trim();
     return `Executive Summary: This document discusses key points including: ${preview}...`;
+  }
+
+  if (isOverview) {
+    const preview = safeDoc.substring(0, 250).replace(/\s+/g, ' ').trim();
+    return `Document Overview: This document covers key topics including: ${preview}...`;
   }
 
   if (!question || !question.trim()) {
@@ -393,7 +439,13 @@ const callOllama = async (prompt) => {
 /**
  * Master multi-provider LLM executor with automatic cascade failover
  */
-const executeWithFallback = async (prompt, fallbackContext = '', question = '', isSummary = false) => {
+const executeWithFallback = async (
+  prompt,
+  fallbackContext = '',
+  question = '',
+  isSummary = false,
+  isOverview = false
+) => {
   const apiKey =
     process.env.LLM_API_KEY ||
     process.env.GEMINI_API_KEY ||
@@ -407,7 +459,7 @@ const executeWithFallback = async (prompt, fallbackContext = '', question = '', 
 
   // Fast offline return in tests or when explicitly set to mock
   if (isTestOrMock) {
-    return generateMockDevResponse(fallbackContext, question, isSummary);
+    return generateMockDevResponse(fallbackContext, question, isSummary, isOverview);
   }
 
   const errors = [];
@@ -448,7 +500,7 @@ const executeWithFallback = async (prompt, fallbackContext = '', question = '', 
   // Provider 4: Graceful Grounded Document Fallback
   // If all external API calls are exhausted (e.g. rate limits 429), fall back to grounded extraction
   console.warn('[AI Service Warning] All external LLM providers failed or were exhausted. Using grounded fallback response.', errors);
-  const fallbackAnswer = generateMockDevResponse(fallbackContext, question, isSummary);
+  const fallbackAnswer = generateMockDevResponse(fallbackContext, question, isSummary, isOverview);
   return fallbackAnswer;
 };
 
@@ -479,7 +531,7 @@ export const generateAnswer = async (input) => {
     fallbackContext = prompt;
   }
 
-  return await executeWithFallback(prompt, fallbackContext, question, false);
+  return await executeWithFallback(prompt, fallbackContext, question, false, false);
 };
 
 /**
@@ -495,5 +547,26 @@ export const generateSummary = async (input) => {
   }
 
   const prompt = buildSummaryPrompt(documentText);
-  return await executeWithFallback(prompt, documentText, '', true);
+  return await executeWithFallback(prompt, documentText, '', true, false);
+};
+
+/**
+ * Generate document-level overview answer for broad queries.
+ * Supports both object signature ({ documentText, conversationHistory, question }) and string signature.
+ */
+export const generateOverviewAnswer = async (input) => {
+  let documentText = '';
+  let conversationHistory = [];
+  let question = '';
+
+  if (typeof input === 'object' && input !== null) {
+    documentText = input.documentText || '';
+    conversationHistory = input.conversationHistory || [];
+    question = input.question || '';
+  } else {
+    documentText = typeof input === 'string' ? input : JSON.stringify(input || '');
+  }
+
+  const prompt = buildOverviewPrompt({ documentText, conversationHistory, question });
+  return await executeWithFallback(prompt, documentText, question, false, true);
 };
