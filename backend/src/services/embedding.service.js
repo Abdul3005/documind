@@ -124,9 +124,11 @@ export const generateEmbedding = async (text) => {
     return generateMockVector(text);
   }
 
-  try {
-    // Strategy 1: If HF_TOKEN is configured, use Hugging Face BAAI/bge-base-en-v1.5
-    if (hfToken) {
+  const providerErrors = [];
+
+  // Strategy 1: Hugging Face BAAI/bge-base-en-v1.5 (if configured)
+  if (hfToken) {
+    try {
       const hf = getHfClient();
       const response = await hf.featureExtraction({
         model: 'BAAI/bge-base-en-v1.5',
@@ -134,48 +136,40 @@ export const generateEmbedding = async (text) => {
       });
 
       const values = Array.isArray(response[0]) ? response[0] : response;
-
-      if (!values || !Array.isArray(values) || values.length === 0) {
-        throw new Error('Invalid embedding response format from Hugging Face API.');
+      if (values && Array.isArray(values) && values.length === VECTOR_DIMENSION) {
+        return values;
       }
-
-      if (values.length !== VECTOR_DIMENSION) {
-        throw new Error(`Embedding dimension mismatch: expected ${VECTOR_DIMENSION}, got ${values.length}`);
-      }
-
-      return values;
+      throw new Error(`HF embedding dimension mismatch: expected ${VECTOR_DIMENSION}, got ${values?.length}`);
+    } catch (hfErr) {
+      console.warn('[Embedding Service Warning] Hugging Face embedding failed:', hfErr.message);
+      providerErrors.push(`Hugging Face: ${hfErr.message}`);
     }
-
-    // Strategy 2: If GEMINI_API_KEY or compatible LLM_API_KEY is configured, use Gemini gemini-embedding-001
-    if (geminiKey) {
-      return await callGeminiEmbedding(text, geminiKey);
-    }
-
-    // Strategy 3: Attempt HF without token if in development
-    const hf = getHfClient();
-    const response = await hf.featureExtraction({
-      model: 'BAAI/bge-base-en-v1.5',
-      inputs: text || '',
-    });
-    const values = Array.isArray(response[0]) ? response[0] : response;
-    if (values && Array.isArray(values) && values.length === VECTOR_DIMENSION) {
-      return values;
-    }
-    throw new Error('No valid embedding values returned from provider.');
-  } catch (error) {
-    console.error('[Embedding Service Error] Failed to generate cloud embedding with provider:', error.message);
-    // In production, NEVER silently corrupt vector storage with mock hash vectors
-    if (
-      process.env.NODE_ENV === 'production' ||
-      effectiveKey === 'invalid_real_api_key_123' ||
-      process.env.LLM_API_KEY === 'invalid_real_api_key_123'
-    ) {
-      throw error;
-    }
-
-    console.warn('[Embedding Service Warning] Cloud provider failed (%s), using normalized fallback vector for dev.', error.message);
-    return generateMockVector(text);
   }
+
+  // Strategy 2: Google Gemini gemini-embedding-001 (if configured)
+  if (geminiKey) {
+    try {
+      return await callGeminiEmbedding(text, geminiKey);
+    } catch (geminiErr) {
+      console.warn('[Embedding Service Warning] Gemini embedding failed:', geminiErr.message);
+      providerErrors.push(`Gemini: ${geminiErr.message}`);
+    }
+  }
+
+  // In production or when invalid real API key is passed, throw detailed error
+  if (
+    process.env.NODE_ENV === 'production' ||
+    effectiveKey === 'invalid_real_api_key_123' ||
+    process.env.LLM_API_KEY === 'invalid_real_api_key_123'
+  ) {
+    const combinedMsg = providerErrors.length > 0 ? providerErrors.join(' | ') : 'No embedding provider succeeded.';
+    console.error('[Embedding Service Error] Cloud embedding generation failed:', combinedMsg);
+    throw new Error(`Embedding provider failed: ${combinedMsg}`);
+  }
+
+  // Dev/Test fallback when cloud providers are exhausted
+  console.warn('[Embedding Service Warning] Cloud providers unavailable, using normalized fallback vector for dev.');
+  return generateMockVector(text);
 };
 
 /**

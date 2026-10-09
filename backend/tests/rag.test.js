@@ -509,6 +509,44 @@ describe('Phase 4: RAG Architecture & Vector Search Pipeline', () => {
         expect(res.body.assistantMessage.content).toBe(UNGROUNDED_RESPONSE);
         expect(res.body.assistantMessage.sources.length).toBe(0);
       });
+
+      it('should handle embedding provider failures gracefully without throwing 500', async () => {
+        // Document with text that contains query keywords
+        const testDoc = await Document.create({
+          userId: userAId,
+          filename: 'resilient_rag.pdf',
+          fileType: 'pdf',
+          extractedText: 'Company quarterly net income was $500,000 for the fiscal period.',
+          status: 'ready',
+          chunks: [
+            {
+              index: 0,
+              text: 'Company quarterly net income was $500,000 for the fiscal period.',
+              embedding: new Array(768).fill(0.1),
+            },
+          ],
+        });
+
+        // Simulate embedding failure in production environment
+        const origKey = process.env.LLM_API_KEY;
+        const origEnv = process.env.NODE_ENV;
+        process.env.NODE_ENV = 'production';
+        process.env.LLM_API_KEY = 'invalid_real_api_key_123';
+
+        const res = await request(app)
+          .post(`/api/documents/${testDoc._id}/messages`)
+          .set('Authorization', `Bearer ${tokenA}`)
+          .send({ content: 'What was the net income?' });
+
+        // Restore environment immediately
+        process.env.NODE_ENV = origEnv;
+        process.env.LLM_API_KEY = origKey;
+
+        // Controller should gracefully succeed (201) rather than crashing with unhandled 500
+        expect(res.status).toBe(201);
+        expect(res.body.success).toBe(true);
+        expect(res.body.assistantMessage).toBeDefined();
+      }, 15000);
     });
   });
 });

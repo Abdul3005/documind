@@ -172,12 +172,36 @@ export const sendMessage = asyncHandler(async (req, res) => {
     } catch (advancedRagError) {
       console.warn('[Chat Controller Warning] Advanced RAG pipeline failed, falling back to baseline retrieval:', advancedRagError.message);
       // Safe fallback to baseline retrieval
-      retrievedChunks = await retrieveRelevantChunks({
-        documentId: id,
-        userId,
-        question: content.trim(),
-        topK: 3,
-      });
+      try {
+        retrievedChunks = await retrieveRelevantChunks({
+          documentId: id,
+          userId,
+          question: content.trim(),
+          topK: 3,
+        });
+      } catch (baselineErr) {
+        console.warn('[Chat Controller Warning] Baseline vector retrieval also failed (embedding provider down/denied):', baselineErr.message);
+        // Fallback: If document has text, match keyword lines from extracted text to build grounded context
+        retrievedChunks = [];
+        if (document.extractedText && document.extractedText.trim()) {
+          const docText = document.extractedText.trim();
+          const qTerms = content
+            .toLowerCase()
+            .replace(/[^\w\s]/g, '')
+            .split(/\s+/)
+            .filter((w) => w.length > 2);
+          const hasMatch = qTerms.some((t) => docText.toLowerCase().includes(t));
+          if (hasMatch) {
+            retrievedChunks = [
+              {
+                chunkIndex: 0,
+                text: docText.substring(0, 1000),
+                similarity: 0.8,
+              },
+            ];
+          }
+        }
+      }
     }
 
     const RAG_MIN_RELEVANCE_THRESHOLD = parseFloat(process.env.RAG_MIN_RELEVANCE_THRESHOLD || '0.15');
