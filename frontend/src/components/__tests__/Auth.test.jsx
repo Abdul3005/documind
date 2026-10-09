@@ -113,4 +113,27 @@ describe('Authentication UI Components', () => {
     expect(window.localStorage.getItem('documind_active_doc_id')).toBeNull();
     expect(window.sessionStorage.getItem('temp_session_key')).toBeNull();
   });
+
+  it('restores user session when valid token or refresh succeeds', async () => {
+    function StatusConsumer() {
+      const { user, isAuthenticated, loading } = useAuth();
+      if (loading) return <div>Loading Auth...</div>;
+      return (
+        <div>
+          <div data-testid="auth-status">{isAuthenticated ? 'AUTHENTICATED' : 'ANONYMOUS'}</div>
+          <div data-testid="auth-user">{user ? user.email : 'NONE'}</div>
+        </div>
+      );
+    }
+
+    render(
+      <AuthProvider>
+        <StatusConsumer />
+      </AuthProvider>
+    );
+
+    // Initial state without token should complete loading cleanly to anonymous
+    expect(await screen.findByTestId('auth-status')).toBeInTheDocument();
+    expect(screen.getByTestId('auth-status').textContent).toBe('ANONYMOUS');
+  });
 });

@@ -6,9 +6,27 @@ const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
+    'X-Requested-With': 'XMLHttpRequest',
+    'X-DocuMind-Client': 'web-app',
   },
+  withCredentials: true,
   timeout: 30000,
 });
+
+// Mutex / Queue state for handling simultaneous 401 refresh requests safely
+let isRefreshing = false;
+let failedQueue = [];
+
+const processQueue = (error, token = null) => {
+  failedQueue.forEach((prom) => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(token);
+    }
+  });
+  failedQueue = [];
+};
 
 // Request Interceptor: attach JWT Bearer token from localStorage
 api.interceptors.request.use(
@@ -24,22 +42,88 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Response Interceptor: handle global errors like 401 Unauthorized or 429 Rate Limit
+// Response Interceptor: handle silent token refresh on 401 Unauthorized
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    const isAuthRoute = error.config?.url?.includes('/auth/login') || error.config?.url?.includes('/auth/register');
-    if (error.response?.status === 401 && !isAuthRoute) {
+  async (error) => {
+    const originalRequest = error.config;
+    if (!originalRequest) {
+      return Promise.reject(error);
+    }
+
+    // Never attempt to refresh auth endpoints (/login, /register, /refresh, /logout)
+    const isAuthRoute =
+      originalRequest.url?.includes('/auth/login') ||
+      originalRequest.url?.includes('/auth/register') ||
+      originalRequest.url?.includes('/auth/refresh') ||
+      originalRequest.url?.includes('/auth/logout');
+
+    if (error.response?.status === 401 && !isAuthRoute && !originalRequest._retry) {
+      originalRequest._retry = true;
+
+      if (isRefreshing) {
+        // Queue concurrent requests to wait for the ongoing refresh to finish
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject });
+        })
+          .then((token) => {
+            originalRequest.headers.Authorization = `Bearer ${token}`;
+            return api(originalRequest);
+          })
+          .catch((err) => Promise.reject(err));
+      }
+
+      isRefreshing = true;
+
       try {
-        if (typeof window !== 'undefined' && window.localStorage) {
-          localStorage.removeItem('documind_token');
+        // Call refresh endpoint directly using raw axios to avoid interceptor recursion
+        const refreshResponse = await axios.post(
+          `${API_BASE_URL}/auth/refresh`,
+          {},
+          {
+            withCredentials: true,
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Requested-With': 'XMLHttpRequest',
+              'X-DocuMind-Client': 'web-app',
+            },
+            timeout: 15000,
+          }
+        );
+
+        const newToken = refreshResponse.data?.token || refreshResponse.data?.accessToken;
+        if (!newToken) {
+          throw new Error('No access token returned from refresh.');
         }
-      } catch (e) {}
-      // Dispatch custom event so AuthContext can handle auto-logout
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new Event('documind_unauthorized'));
+
+        if (typeof window !== 'undefined' && window.localStorage) {
+          localStorage.setItem('documind_token', newToken);
+        }
+
+        processQueue(null, newToken);
+
+        originalRequest.headers.Authorization = `Bearer ${newToken}`;
+        return api(originalRequest);
+      } catch (refreshError) {
+        processQueue(refreshError, null);
+
+        try {
+          if (typeof window !== 'undefined' && window.localStorage) {
+            localStorage.removeItem('documind_token');
+          }
+        } catch (e) {}
+
+        // Dispatch custom event so AuthContext can clean up application state
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('documind_unauthorized'));
+        }
+
+        return Promise.reject(refreshError);
+      } finally {
+        isRefreshing = false;
       }
     }
+
     return Promise.reject(error);
   }
 );
@@ -60,6 +144,33 @@ export const loginApi = async ({ email, password }) => {
 export const getMeApi = async () => {
   const response = await api.get('/auth/me');
   return response.data; // { success: true, user }
+};
+
+export const refreshTokenApi = async () => {
+  const response = await axios.post(
+    `${API_BASE_URL}/auth/refresh`,
+    {},
+    {
+      withCredentials: true,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+        'X-DocuMind-Client': 'web-app',
+      },
+      timeout: 15000,
+    }
+  );
+  return response.data; // { success: true, token, accessToken }
+};
+
+export const logoutApi = async () => {
+  try {
+    const response = await api.post('/auth/logout', {});
+    return response.data;
+  } catch (err) {
+    // Best-effort logout: if backend is unavailable or offline, resolve safely
+    return { success: false, error: err.message };
+  }
 };
 
 /**

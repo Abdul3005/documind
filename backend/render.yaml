@@ -18,3 +18,5 @@ services:
         value: https://generativelanguage.googleapis.com/v1beta
       - key: LLM_MODEL_NAME
         value: gemini-flash-latest
+      - key: CORS_ORIGIN
+        value: https://documind-one-sigma.vercel.app

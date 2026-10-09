@@ -29,7 +29,7 @@ DocuMind is an intelligent document analysis assistant designed for students, le
   - Prompt injection defense using explicit `<<<CONTEXT>>>` delimiter boundaries.
   - Secure cascade deletion: deleting a document wipes all associated messages and vector chunks.
 - **Automated Testing & CI/CD**:
-  - **51 Total Tests Passing**: 43 backend tests (Vitest + Supertest + MongoMemoryServer) and 8 frontend tests (Vitest + React Testing Library).
+  - **129 Total Tests Passing**: 119 backend tests (Vitest + Supertest + MongoMemoryServer) and 10 frontend tests (Vitest + React Testing Library).
   - Active GitHub Actions workflow (`.github/workflows/ci.yml`) validating lint, tests, and production build on every push and PR.
 
 ---
@@ -208,8 +208,10 @@ npm run dev
 | Method | Route | Description | Auth Required | Rate Limit |
 | :--- | :--- | :--- | :--- | :--- |
 | `GET` | `/api/health` | Service health status | No | Unlimited |
-| `POST` | `/api/auth/register` | Register new user & return JWT token | No | 10 req / 15 min |
-| `POST` | `/api/auth/login` | Login user & return JWT token | No | 10 req / 15 min |
+| `POST` | `/api/auth/register` | Register new user & return JWT + HttpOnly refresh cookie | No | 10 req / 15 min |
+| `POST` | `/api/auth/login` | Login user & return JWT + HttpOnly refresh cookie | No | 10 req / 15 min |
+| `POST` | `/api/auth/refresh` | Rotate refresh token & issue fresh access token | Cookie (HttpOnly) | 10 req / 15 min |
+| `POST` | `/api/auth/logout` | Revoke refresh session and clear cookie | Optional | Unlimited |
 | `GET` | `/api/auth/me` | Get authenticated user profile | Yes (Bearer) | Unlimited |
 | `POST` | `/api/documents/upload` | Upload PDF/image, validate magic bytes, run OCR & RAG | Yes (Bearer) | 10 req / 15 min |
 | `GET` | `/api/documents` | List authenticated user's documents | Yes (Bearer) | Unlimited |

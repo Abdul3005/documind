@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { loginApi, registerApi, getMeApi } from '../services/api.js';
+import { loginApi, registerApi, getMeApi, logoutApi, refreshTokenApi } from '../services/api.js';
 
 const AuthContext = createContext(null);
 
@@ -47,13 +47,13 @@ export function AuthProvider({ children }) {
   }, []);
 
   const logout = useCallback(() => {
-    // 1. Explicitly purge all document-related states to initial empty values (null / [])
+    // 1. Explicitly purge all document-related states synchronously
     setActiveDocument(null);
     setSummary(null);
     setMessages([]);
     setDocumentList([]);
 
-    // 2. Clear localStorage and sessionStorage completely
+    // 2. Clear localStorage and sessionStorage completely synchronously
     try {
       if (typeof window !== 'undefined') {
         if (window.localStorage && typeof window.localStorage.clear === 'function') {
@@ -78,7 +78,7 @@ export function AuthProvider({ children }) {
       }
     } catch (e) {}
 
-    // 4. Reset authentication state
+    // 4. Reset authentication state synchronously
     safeRemoveToken();
     setToken(null);
     setUser(null);
@@ -88,26 +88,46 @@ export function AuthProvider({ children }) {
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('documind_logout'));
     }
+
+    // 6. Server-side logout (non-blocking best-effort call to revoke refresh token and clear cookie)
+    logoutApi().catch(() => {});
   }, []);
 
-  // Restore authenticated session on mount if token exists
+  // Restore authenticated session on mount if token or refresh cookie exists
   useEffect(() => {
     const restoreSession = async () => {
       const savedToken = safeGetToken();
-      if (!savedToken) {
-        setLoading(false);
-        return;
+
+      if (savedToken) {
+        try {
+          const res = await getMeApi();
+          if (res.success && res.user) {
+            setUser(res.user);
+            setToken(savedToken);
+            setLoading(false);
+            return;
+          }
+        } catch (err) {
+          // Access token might be expired; fall through to refresh attempt
+        }
       }
 
+      // Fallback: attempt silent refresh using HttpOnly cookie
       try {
-        const res = await getMeApi();
-        if (res.success && res.user) {
-          setUser(res.user);
-          setToken(savedToken);
-        } else {
-          logout();
+        const refreshRes = await refreshTokenApi();
+        const newToken = refreshRes?.token || refreshRes?.accessToken;
+        if (newToken) {
+          safeSetToken(newToken);
+          setToken(newToken);
+          const meRes = await getMeApi();
+          if (meRes.success && meRes.user) {
+            setUser(meRes.user);
+            setLoading(false);
+            return;
+          }
         }
-      } catch (err) {
+        logout();
+      } catch (refreshErr) {
         logout();
       } finally {
         setLoading(false);

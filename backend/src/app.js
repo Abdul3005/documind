@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 import authRoutes from './routes/auth.routes.js';
 import documentRoutes from './routes/document.routes.js';
@@ -13,29 +14,31 @@ const app = express();
 app.set("trust proxy", 1);
 
 // Base Middleware
-const originSetting = process.env.CORS_ORIGIN;
-const allowedOrigins = originSetting
-  ? originSetting.split(',').map((o) => o.trim())
-  : ['http://localhost:5173', 'http://localhost:3000'];
-
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps, curl, postman, health checks)
+    // Allow non-browser requests without origin (curl, server-to-server, health checks)
     if (!origin) return callback(null, true);
-    if (
-      process.env.CORS_ORIGIN === '*' ||
-      allowedOrigins.includes('*') ||
-      allowedOrigins.includes(origin) ||
-      process.env.NODE_ENV !== 'production' ||
-      origin.endsWith('.vercel.app')
-    ) {
+
+    const currentOriginSetting = process.env.CORS_ORIGIN;
+    const dynamicAllowedOrigins = currentOriginSetting
+      ? currentOriginSetting.split(',').map((o) => o.trim()).filter(Boolean)
+      : ['http://localhost:5173', 'http://localhost:3000'];
+
+    const isExplicitlyAllowed = dynamicAllowedOrigins.includes(origin);
+    const isDev = process.env.NODE_ENV !== 'production' && (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:'));
+
+    if (isExplicitlyAllowed || isDev) {
+      // In credentialed CORS, return the exact verified origin
       return callback(null, true);
     }
-    return callback(new Error('CORS policy violation: Origin not allowed.'));
+    const corsErr = new Error('CORS policy violation: Origin not allowed.');
+    corsErr.statusCode = 403;
+    return callback(corsErr);
   },
   credentials: true,
 }));
 
+app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
