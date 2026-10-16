@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import Groq from 'groq-sdk';
+import { recordAiUsage } from './metrics.service.js';
 
 /**
  * Robust Multi-Provider AI Service for DocuMind
@@ -339,6 +340,7 @@ const callGroq = async (prompt, preferredModel = 'openai/gpt-oss-120b') => {
   const messages = formatMessagesForLLM(prompt);
 
   for (const model of uniqueModels) {
+    const startTime = Date.now();
     try {
       const chatCompletion = await groq.chat.completions.create({
         messages,
@@ -348,8 +350,22 @@ const callGroq = async (prompt, preferredModel = 'openai/gpt-oss-120b') => {
       });
 
       const answer = chatCompletion.choices[0]?.message?.content?.trim();
-      if (answer) return answer;
+      if (answer) {
+        const latencyMs = Date.now() - startTime;
+        const usage = chatCompletion.usage;
+        recordAiUsage({
+          provider: 'groq',
+          model,
+          promptTokens: usage?.prompt_tokens || 0,
+          completionTokens: usage?.completion_tokens || 0,
+          totalTokens: usage?.total_tokens || 0,
+          latencyMs,
+          hasUsage: Boolean(usage),
+        });
+        return answer;
+      }
     } catch (err) {
+      recordAiUsage({ provider: 'groq', model, error: true });
       lastError = err;
       const msg = (err.message || '').toLowerCase();
       const isModelError =
@@ -395,14 +411,34 @@ const callOpenAICompatible = async (prompt) => {
   model = model.replace(/['",]/g, '').trim();
   const messages = formatMessagesForLLM(prompt);
 
-  const response = await client.chat.completions.create({
-    messages,
-    model,
-    temperature: 0.3,
-    max_tokens: SUMMARY_MAX_TOKENS,
-  });
+  const startTime = Date.now();
+  try {
+    const response = await client.chat.completions.create({
+      messages,
+      model,
+      temperature: 0.3,
+      max_tokens: SUMMARY_MAX_TOKENS,
+    });
 
-  return response.choices[0]?.message?.content?.trim();
+    const answer = response.choices[0]?.message?.content?.trim();
+    const latencyMs = Date.now() - startTime;
+    const usage = response.usage;
+
+    recordAiUsage({
+      provider: 'openai_compatible',
+      model,
+      promptTokens: usage?.prompt_tokens || 0,
+      completionTokens: usage?.completion_tokens || 0,
+      totalTokens: usage?.total_tokens || 0,
+      latencyMs,
+      hasUsage: Boolean(usage),
+    });
+
+    return answer;
+  } catch (err) {
+    recordAiUsage({ provider: 'openai_compatible', model, error: true });
+    throw err;
+  }
 };
 
 /**

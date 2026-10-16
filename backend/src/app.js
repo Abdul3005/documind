@@ -6,12 +6,17 @@ import authRoutes from './routes/auth.routes.js';
 import documentRoutes from './routes/document.routes.js';
 import chatRoutes from './routes/chat.routes.js';
 import { errorHandler } from './middleware/errorHandler.js';
+import { requestCorrelationAndLogging } from './middleware/requestLogger.middleware.js';
+import { getMetricsSnapshot } from './services/metrics.service.js';
 
 // Load environment variables
 dotenv.config();
 
 const app = express();
 app.set("trust proxy", 1);
+
+// Request Correlation ID & Structured Logging Middleware
+app.use(requestCorrelationAndLogging);
 
 // Base Middleware
 app.use(cors({
@@ -36,6 +41,7 @@ app.use(cors({
     return callback(corsErr);
   },
   credentials: true,
+  exposedHeaders: ['X-Request-ID'],
 }));
 
 app.use(cookieParser());
@@ -60,6 +66,26 @@ app.get('/api/health', (req, res) => {
     message: 'DocuMind API is running',
     provider,
     timestamp: new Date().toISOString(),
+  });
+});
+
+// Observability & Telemetry Metrics Route
+app.get('/api/metrics', (req, res) => {
+  const expectedToken = process.env.METRICS_TOKEN || process.env.METRICS_AUTH_TOKEN;
+  if (expectedToken) {
+    const authHeader = req.headers.authorization;
+    const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
+    const headerToken = req.headers['x-metrics-token'];
+    const clientToken = bearerToken || headerToken;
+
+    if (!clientToken || clientToken !== expectedToken) {
+      return res.status(401).json({ success: false, message: 'Unauthorized access to metrics.' });
+    }
+  }
+
+  res.status(200).json({
+    success: true,
+    data: getMetricsSnapshot(),
   });
 });
 

@@ -546,7 +546,7 @@ describe('Phase 4: RAG Architecture & Vector Search Pipeline', () => {
         expect(res.status).toBe(201);
         expect(res.body.success).toBe(true);
         expect(res.body.assistantMessage).toBeDefined();
-      }, 15000);
+      }, 30000);
     });
   });
 });

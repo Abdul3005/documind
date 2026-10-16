@@ -1,0 +1,77 @@
+services:
+  # DocuMind Express Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: documind-backend
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    env_file:
+      - path: ./backend/.env
+        required: false
+    environment:
+      - NODE_ENV=production
+      - PORT=5000
+      - CORS_ORIGIN=http://localhost:3000,http://localhost:5173
+    networks:
+      - documind-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # DocuMind React + Vite Frontend (Nginx)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: documind-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - documind-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  # Optional local MongoDB service for fully offline isolated development.
+  # Placed in the 'local-db' profile so it is strictly opt-in and NEVER automatically
+  # started or substituted for the user's MongoDB Atlas cluster.
+  # To run with local mongo: docker compose --profile local-db up
+  mongo:
+    image: mongo:7-jammy
+    container_name: documind-mongo
+    restart: unless-stopped
+    profiles:
+      - local-db
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - documind-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+networks:
+  documind-network:
+    driver: bridge
+
+volumes:
+  mongo-data:
+    driver: local
