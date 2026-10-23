@@ -21,7 +21,12 @@ export function useDocuments(enabled = true, userId = null) {
       }
     } catch (err) {
       console.error('[useDocuments] Failed to fetch documents:', err);
-      setError(err.response?.data?.error || 'Failed to load documents list.');
+      const isAuthErr = err.response?.status === 401 || String(err.response?.data?.error || '').includes('Not authorized');
+      if (isAuthErr) {
+        setError('Your session has expired. Please log in again.');
+      } else {
+        setError(err.response?.data?.error || 'Failed to load documents list.');
+      }
     } finally {
       setLoading(false);
     }

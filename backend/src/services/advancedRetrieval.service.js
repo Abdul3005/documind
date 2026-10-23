@@ -33,13 +33,38 @@ const STOP_WORDS = new Set([
  * @param {string} text 
  * @returns {string[]}
  */
+const INVOICE_SYNONYMS = {
+  issuer: ['vendor', 'seller', 'merchant', 'from', 'company'],
+  sender: ['vendor', 'seller', 'from', 'company'],
+  recipient: ['billed', 'customer', 'client', 'buyer'],
+  receiver: ['billed', 'customer', 'client', 'buyer'],
+  total: ['amount', 'due', 'balance', 'grand', 'subtotal'],
+  price: ['amount', 'cost', 'total', 'rate'],
+  cost: ['amount', 'price', 'total', 'due'],
+  items: ['item', 'description', 'service', 'product', 'qty'],
+  item: ['items', 'description', 'service', 'product', 'qty'],
+  date: ['due', 'issued', 'invoice'],
+  purpose: ['invoice', 'receipt', 'bill', 'document'],
+};
+
 export const extractSearchTerms = (text) => {
   if (!text || typeof text !== 'string') return [];
-  return text
+  const baseWords = text
     .toLowerCase()
     .replace(/[^\w\s]/g, ' ')
     .split(/\s+/)
     .filter((word) => word.length > 2 && !STOP_WORDS.has(word));
+
+  const expanded = new Set(baseWords);
+  for (const word of baseWords) {
+    if (INVOICE_SYNONYMS[word]) {
+      for (const syn of INVOICE_SYNONYMS[word]) {
+        expanded.add(syn);
+      }
+    }
+  }
+
+  return Array.from(expanded);
 };
 
 /**

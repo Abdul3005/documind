@@ -29,6 +29,7 @@
     "pdf-lib": "^1.17.1",
     "pdf-parse": "^1.1.1",
     "pino": "^10.4.0",
+    "sharp": "^0.32.6",
     "tesseract.js": "^5.0.5"
   },
   "devDependencies": {

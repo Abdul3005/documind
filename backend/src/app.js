@@ -24,13 +24,14 @@ app.use(cors({
     // Allow non-browser requests without origin (curl, server-to-server, health checks)
     if (!origin) return callback(null, true);
 
+    const normalizedOrigin = origin.replace(/\/+$/, '');
     const currentOriginSetting = process.env.CORS_ORIGIN;
     const dynamicAllowedOrigins = currentOriginSetting
-      ? currentOriginSetting.split(',').map((o) => o.trim()).filter(Boolean)
+      ? currentOriginSetting.split(',').map((o) => o.trim().replace(/\/+$/, '')).filter(Boolean)
       : ['http://localhost:5173', 'http://localhost:3000'];
 
-    const isExplicitlyAllowed = dynamicAllowedOrigins.includes(origin);
-    const isDev = process.env.NODE_ENV !== 'production' && (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:'));
+    const isExplicitlyAllowed = dynamicAllowedOrigins.includes(normalizedOrigin);
+    const isDev = process.env.NODE_ENV !== 'production' && (normalizedOrigin.startsWith('http://localhost:') || normalizedOrigin.startsWith('http://127.0.0.1:'));
 
     if (isExplicitlyAllowed || isDev) {
       // In credentialed CORS, return the exact verified origin

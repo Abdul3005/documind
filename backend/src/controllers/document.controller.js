@@ -39,6 +39,8 @@ export const uploadDocument = asyncHandler(async (req, res) => {
       status: document.status,
       extractionMethod: document.extractionMethod,
       extractedText: document.extractedText,
+      ocrQuality: document.ocrQuality,
+      ocrConfidence: document.ocrConfidence,
       createdAt: document.createdAt,
     },
   });
@@ -98,6 +100,8 @@ export const getDocument = asyncHandler(async (req, res) => {
       extractionMethod: document.extractionMethod,
       extractedText: document.extractedText,
       summary: document.summary,
+      ocrQuality: document.ocrQuality,
+      ocrConfidence: document.ocrConfidence,
       createdAt: document.createdAt,
     },
   });

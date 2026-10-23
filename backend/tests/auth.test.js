@@ -534,5 +534,73 @@ describe('Authentication API (/api/auth)', () => {
 
       process.env.CORS_ORIGIN = origCorsOrigin;
     });
+
+    it('should strictly return 401 "Not authorized: Refresh token cookie missing." when no cookie is sent', async () => {
+      const res = await request(app)
+        .post('/api/auth/refresh')
+        .set('Origin', 'http://localhost:5173')
+        .set('Content-Type', 'application/json');
+
+      expect(res.status).toBe(401);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error).toBe('Not authorized: Refresh token cookie missing.');
+    });
+
+    it('should clear refresh cookie and revoke session on POST /api/auth/logout', async () => {
+      const loginRes = await request(app)
+        .post('/api/auth/register')
+        .send({
+          name: 'Logout Verify User',
+          email: 'logout_verify@example.com',
+          password: 'Password123',
+        });
+
+      const rawCookie = loginRes.headers['set-cookie'].find((c) => c.startsWith('documind_refresh='));
+      expect(rawCookie).toBeDefined();
+
+      const logoutRes = await request(app)
+        .post('/api/auth/logout')
+        .set('Cookie', [rawCookie]);
+
+      expect(logoutRes.status).toBe(200);
+      expect(logoutRes.body.success).toBe(true);
+
+      // Verify cleared cookie header
+      const clearCookies = logoutRes.headers['set-cookie'];
+      expect(clearCookies).toBeDefined();
+      const cleared = clearCookies.find((c) => c.startsWith('documind_refresh='));
+      expect(cleared).toBeDefined();
+      expect(cleared).toMatch(/Expires=Thu, 01 Jan 1970|Max-Age=0/i);
+
+      // Verify token is revoked in database
+      const dbTokens = await RefreshToken.find({}).sort({ createdAt: -1 });
+      expect(dbTokens.length).toBeGreaterThan(0);
+      expect(dbTokens[0].isRevoked).toBe(true);
+      expect(dbTokens[0].revokedReason).toBe('logged_out');
+    });
+
+    it('should enforce secure and SameSite=None when running in production or over HTTPS', async () => {
+      const origEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'production';
+
+      const res = await request(app)
+        .post('/api/auth/register')
+        .send({
+          name: 'Prod Cookie User',
+          email: 'prod_cookie@example.com',
+          password: 'Password123',
+        });
+
+      process.env.NODE_ENV = origEnv;
+
+      expect(res.status).toBe(201);
+      const cookies = res.headers['set-cookie'];
+      const refreshCookie = cookies.find((c) => c.startsWith('documind_refresh='));
+      expect(refreshCookie).toBeDefined();
+      expect(refreshCookie).toContain('HttpOnly');
+      expect(refreshCookie).toContain('Secure');
+      expect(refreshCookie.toLowerCase()).toContain('samesite=none');
+    });
   });
 });
+

@@ -173,6 +173,12 @@ export const generateMockDevResponse = (
   }
 
   if (isOverview) {
+    const lowerDoc = safeDoc.toLowerCase();
+    const isInvoice = /invoice|receipt|billed\s*to|vendor|amount\s*due|total/i.test(lowerDoc);
+    if (isInvoice) {
+      const preview = safeDoc.substring(0, 300).replace(/\s+/g, ' ').trim();
+      return `Document Overview: This document is an invoice/billing document containing details: ${preview}...`;
+    }
     const preview = safeDoc.substring(0, 250).replace(/\s+/g, ' ').trim();
     return `Document Overview: This document covers key topics including: ${preview}...`;
   }
@@ -185,21 +191,52 @@ export const generateMockDevResponse = (
     'what', 'is', 'the', 'of', 'in', 'and', 'a', 'to', 'for', 'are', 'with',
     'on', 'at', 'this', 'that', 'from', 'how', 'much', 'was', 'were', 'does'
   ];
-  const words = question
+
+  const SYNONYM_MAP = {
+    issuer: ['vendor', 'seller', 'merchant', 'from', 'company', 'provider'],
+    sender: ['vendor', 'seller', 'from', 'company', 'provider'],
+    recipient: ['billed', 'customer', 'client', 'buyer'],
+    receiver: ['billed', 'customer', 'client', 'buyer'],
+    total: ['amount', 'due', 'balance', 'grand', 'subtotal'],
+    price: ['amount', 'cost', 'total', 'rate'],
+    cost: ['amount', 'price', 'total', 'due'],
+    items: ['item', 'description', 'service', 'product', 'qty'],
+    item: ['items', 'description', 'service', 'product', 'qty'],
+    date: ['due', 'issued', 'invoice'],
+  };
+
+  const rawWords = question
     .toLowerCase()
     .replace(/[^\w\s]/g, '')
     .split(/\s+/)
     .filter((w) => w.length > 2 && !stopWords.includes(w));
 
+  const wordsSet = new Set(rawWords);
+  for (const w of rawWords) {
+    if (SYNONYM_MAP[w]) {
+      for (const syn of SYNONYM_MAP[w]) {
+        wordsSet.add(syn);
+      }
+    }
+  }
+  const words = Array.from(wordsSet);
+
   const lowerDoc = safeDoc.toLowerCase();
   const matches = words.filter((w) => lowerDoc.includes(w));
+
+  const GENERIC_DOC_TERMS = ['invoice', 'document', 'receipt', 'file', 'page', 'pdf', 'image'];
 
   if (matches.length > 0) {
     const lines = safeDoc.split('\n').filter((l) => l.trim().length > 0);
     const scoredLines = lines
       .map((line) => {
         const lowerLine = line.toLowerCase();
-        const score = words.reduce((acc, w) => acc + (lowerLine.includes(w) ? 1 : 0), 0);
+        let score = 0;
+        for (const w of words) {
+          if (lowerLine.includes(w)) {
+            score += GENERIC_DOC_TERMS.includes(w) ? 0.2 : 2.0;
+          }
+        }
         return { line, score };
       })
       .filter((item) => item.score > 0)

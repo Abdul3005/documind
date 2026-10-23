@@ -2,6 +2,7 @@ import fs from 'fs';
 import zlib from 'zlib';
 import pdfParse from 'pdf-parse';
 import { createWorker } from 'tesseract.js';
+import sharp from 'sharp';
 import { PDFDocument, PDFName, PDFRawStream } from 'pdf-lib';
 import { MAX_PDF_PAGES, OCR_PAGE_TIMEOUT_MS, OCR_BATCH_SIZE, MAX_OCR_PAGES, MAX_TOTAL_OCR_TIMEOUT_MS } from '../config/limits.js';
 
@@ -94,6 +95,98 @@ export const extractImagesFromPdf = async (pdfBuffer) => {
 /**
  * Wraps Tesseract worker recognize call with an explicit page-level timeout
  */
+/**
+ * Preprocesses image buffers (JPG/JPEG/PNG) to maximize Tesseract OCR legibility.
+ * - Auto-orients based on EXIF orientation metadata
+ * - Checks resolution and gently scales up low-res images to optimal OCR font height
+ * - Converts to grayscale and stretches contrast (normalize)
+ * - Applies mild sharpening to crisp character contours without halos
+ * - Encodes as clean 300-DPI PNG for Tesseract input
+ */
+export const preprocessImage = async (imageBuffer) => {
+  if (!imageBuffer || !Buffer.isBuffer(imageBuffer)) return imageBuffer;
+  try {
+    let pipeline = sharp(imageBuffer).rotate();
+    const metadata = await pipeline.metadata();
+
+    // If image has low resolution (< 1600px width), upscale proportionally for clean character segmentation
+    if (metadata.width && metadata.width < 1600) {
+      const targetWidth = Math.min(2400, Math.max(1600, Math.round(metadata.width * 2)));
+      pipeline = pipeline.resize({
+        width: targetWidth,
+        kernel: sharp.kernel.lanczos3,
+        withoutEnlargement: false,
+      });
+    }
+
+    // Grayscale + Contrast normalization + Mild unsharp mask
+    const processedBuffer = await pipeline
+      .grayscale()
+      .normalize()
+      .sharpen({ sigma: 1.0, m1: 0.5, m2: 0.5 })
+      .withMetadata({ density: 300 })
+      .png()
+      .toBuffer();
+
+    return processedBuffer;
+  } catch (err) {
+    console.warn('[OCR Service Warning] Image preprocessing fallback to raw buffer:', err.message);
+    return imageBuffer;
+  }
+};
+
+/**
+ * Assesses OCR quality and noise ratio.
+ * Distinguishes readable text from garbled noise fragments without logging private document data.
+ */
+export const evaluateOcrQuality = (text = '', confidence = null) => {
+  if (!text || typeof text !== 'string') {
+    return { quality: 'unreadable', confidence: 0, isPoorQuality: true, wordCount: 0 };
+  }
+
+  const clean = text.trim();
+  if (
+    clean.length === 0 ||
+    clean === '[Image OCR] No readable text recognized in image.' ||
+    clean === '[Scanned PDF] Scanned document processed. No high-confidence text detected via OCR.'
+  ) {
+    return { quality: 'unreadable', confidence: 0, isPoorQuality: true, wordCount: 0 };
+  }
+
+  const words = clean.split(/\s+/).filter(Boolean);
+  if (words.length === 0) {
+    return { quality: 'unreadable', confidence: 0, isPoorQuality: true, wordCount: 0 };
+  }
+
+  // Legible tokens: words composed of letters, digits, and common currency/punctuation
+  const legibleWords = words.filter((w) => /^[a-zA-Z0-9$%.,#:\/\-\(\)]{2,}$/.test(w));
+  const wordRatio = legibleWords.length / words.length;
+
+  const confVal = typeof confidence === 'number' ? confidence : null;
+
+  let quality = 'good';
+  if (confVal !== null && confVal < 40) {
+    quality = 'low';
+  } else if (confVal !== null && confVal < 60) {
+    quality = wordRatio >= 0.5 ? 'medium' : 'low';
+  } else if (wordRatio < 0.35 || words.length < 3) {
+    quality = 'low';
+  } else if (wordRatio < 0.6) {
+    quality = 'medium';
+  }
+
+  const isPoorQuality = quality === 'low' || quality === 'unreadable';
+
+  return {
+    quality,
+    qualityTier: quality,
+    confidence: confVal,
+    wordCount: words.length,
+    legibleWordCount: legibleWords.length,
+    isPoorQuality,
+  };
+};
+
 const recognizeWithTimeout = (worker, imageBuffer, timeoutMs = OCR_PAGE_TIMEOUT_MS) => {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -441,6 +534,10 @@ export const extractText = async (filePath, fileType) => {
     } else if (fileType === 'image') {
       let worker;
       let extractedText = '';
+      let rawOcrText = '';
+      let ocrConfidence = null;
+      let ocrQuality = 'good';
+
       try {
         const imgBuffer = fs.readFileSync(filePath);
         if (isValidImageBuffer(imgBuffer)) {
@@ -448,11 +545,36 @@ export const extractText = async (filePath, fileType) => {
           const visionFn = ocrService.recognizeWithGeminiVision || recognizeWithGeminiVision;
           extractedText = await visionFn(imgBuffer);
 
-          // Fallback to Tesseract if Vision unavailable
+          // Fallback to preprocessed Tesseract OCR if Vision was unavailable
           if (!extractedText) {
+            const preprocessorFn = ocrService.preprocessImage || preprocessImage;
+            const processedBuffer = await preprocessorFn(imgBuffer);
+
             worker = await createWorker('eng');
-            const { data: { text } } = await recognizeWithTimeout(worker, imgBuffer, OCR_PAGE_TIMEOUT_MS);
-            extractedText = text ? text.trim() : '';
+            await worker.setParameters({
+              preserve_interword_spaces: '1',
+              user_defined_dpi: '300',
+              tessedit_pageseg_mode: '3',
+            });
+
+            const result = await recognizeWithTimeout(worker, processedBuffer, OCR_PAGE_TIMEOUT_MS);
+            rawOcrText = result?.data?.text ? result.data.text.trim() : '';
+            ocrConfidence = typeof result?.data?.confidence === 'number' ? result.data.confidence : null;
+
+            const evaluateFn = ocrService.evaluateOcrQuality || evaluateOcrQuality;
+            const qualityReport = evaluateFn(rawOcrText, ocrConfidence);
+            ocrQuality = qualityReport.quality;
+
+            // Log useful OCR confidence and quality information without logging sensitive invoice contents
+            console.log(
+              `[OCR Service Image Quality] Quality: ${ocrQuality}, Confidence: ${ocrConfidence !== null ? ocrConfidence.toFixed(1) + '%' : 'N/A'}, Words: ${qualityReport.wordCount}`
+            );
+
+            extractedText = rawOcrText;
+          } else {
+            rawOcrText = extractedText;
+            ocrQuality = 'good';
+            ocrConfidence = 95;
           }
         } else {
           console.warn('[OCR Service Warning] Image file signature validation failed.');
@@ -472,12 +594,18 @@ export const extractText = async (filePath, fileType) => {
       if (!extractedText) {
         return {
           extractedText: '[Image OCR] No readable text recognized in image.',
+          rawOcrText: '',
+          ocrQuality: 'unreadable',
+          ocrConfidence: 0,
           extractionMethod: 'ocr',
         };
       }
 
       return {
         extractedText,
+        rawOcrText: rawOcrText || extractedText,
+        ocrQuality,
+        ocrConfidence,
         extractionMethod: 'ocr',
       };
     } else {

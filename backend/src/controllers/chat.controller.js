@@ -28,9 +28,43 @@ export const isDocumentOverviewQuery = (query) => {
     /^((can you |please )?summarize (this|the) document)$/,
     /^(document (overview|summary))$/,
     /^(what does (this|the) document say)$/,
+    /^(what is (this|the) document for)$/,
+    /^(what is the purpose of (this|the) document)$/,
+    /^(what is (this|the) document)$/,
+    /^(what (type|kind) of document is (this|the)( document)?)$/,
+    /^(explain (this|the) document)$/,
+    /^(tell me about (this|the) document)$/,
+    /^(describe (this|the) document)$/,
   ];
 
   return overviewPatterns.some((pattern) => pattern.test(clean));
+};
+
+export const LOW_QUALITY_OCR_MESSAGE =
+  'The text in this document could not be read reliably due to low image quality, blur, or OCR scanning issues. Please try uploading a clearer, higher-resolution image or PDF with legible text.';
+
+export const isLowQualityOcrDocument = (document) => {
+  if (!document) return false;
+  if (document.ocrQuality === 'unreadable' || document.ocrQuality === 'low') {
+    return true;
+  }
+  const text = (document.extractedText || '').trim();
+  if (
+    text === '[Image OCR] No readable text recognized in image.' ||
+    text === '[Scanned PDF] Scanned document processed. No high-confidence text detected via OCR.'
+  ) {
+    return true;
+  }
+  if (document.fileType === 'image' || document.extractionMethod === 'ocr') {
+    const words = text.split(/\s+/).filter(Boolean);
+    if (words.length > 0 && words.length < 20) {
+      const validWords = words.filter((w) => /^[a-zA-Z]{3,}$/.test(w));
+      if (validWords.length / words.length < 0.35) {
+        return true;
+      }
+    }
+  }
+  return false;
 };
 
 /**
@@ -82,7 +116,10 @@ export const sendMessage = asyncHandler(async (req, res) => {
   if (isOverview) {
     // Dedicated Document-Overview Path:
     // Bypasses chunk similarity threshold check while keeping context strictly document-scoped.
-    if (!document.extractedText || !document.extractedText.trim()) {
+    if (isLowQualityOcrDocument(document)) {
+      assistantResponse = LOW_QUALITY_OCR_MESSAGE;
+      sources = [];
+    } else if (!document.extractedText || !document.extractedText.trim()) {
       assistantResponse = UNGROUNDED_RESPONSE;
       sources = [];
     } else {
@@ -112,6 +149,9 @@ export const sendMessage = asyncHandler(async (req, res) => {
 
       if (isUngrounded) {
         sources = [];
+        if (isLowQualityOcrDocument(document)) {
+          assistantResponse = LOW_QUALITY_OCR_MESSAGE;
+        }
       } else {
         sources = document.chunks && document.chunks.length > 0
           ? [
@@ -247,7 +287,11 @@ export const sendMessage = asyncHandler(async (req, res) => {
     // If vector search returns 0 chunks or all retrieved chunks fall below the minimum relevance threshold,
     // DO NOT call the LLM to generate an open-ended answer.
     if (retrievedChunks.length === 0 || maxSimilarity < RAG_MIN_RELEVANCE_THRESHOLD) {
-      assistantResponse = UNGROUNDED_RESPONSE;
+      if (isLowQualityOcrDocument(document)) {
+        assistantResponse = LOW_QUALITY_OCR_MESSAGE;
+      } else {
+        assistantResponse = UNGROUNDED_RESPONSE;
+      }
       sources = [];
     } else {
       // 4. Generate grounded AI response using retrieved chunks context
@@ -266,6 +310,9 @@ export const sendMessage = asyncHandler(async (req, res) => {
 
       if (isUngrounded) {
         sources = [];
+        if (isLowQualityOcrDocument(document)) {
+          assistantResponse = LOW_QUALITY_OCR_MESSAGE;
+        }
       } else {
         sources = retrievedChunks.map((c) => ({
           chunkIndex: c.chunkIndex,

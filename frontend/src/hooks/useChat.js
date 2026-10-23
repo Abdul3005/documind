@@ -12,6 +12,13 @@ const formatUserFriendlyError = (rawError) => {
   ) {
     return 'The AI service is temporarily busy. Please try again in a moment.';
   }
+  if (
+    str.includes('Refresh token cookie missing') ||
+    str.includes('expired refresh token') ||
+    str.includes('Not authorized')
+  ) {
+    return 'Your session has expired. Please log in again.';
+  }
   return str;
 };
 

@@ -74,6 +74,19 @@ const documentSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    ocrQuality: {
+      type: String,
+      enum: ['good', 'medium', 'low', 'unreadable', null],
+      default: null,
+    },
+    ocrConfidence: {
+      type: Number,
+      default: null,
+    },
+    rawOcrText: {
+      type: String,
+      default: null,
+    },
     embeddingModel: {
       type: String,
       default: null,

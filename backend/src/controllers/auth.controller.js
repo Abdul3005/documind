@@ -14,39 +14,60 @@ import {
  * In production: SameSite=None + Secure=true to allow cross-site cookie flow (Vercel -> Render).
  * In development: SameSite=Lax + Secure=false for local HTTP testing.
  */
-export const getRefreshCookieOptions = (expiresAt) => {
-  const isProd = process.env.NODE_ENV === 'production';
-  return {
+export const getRefreshCookieOptions = (expiresAt, req = null) => {
+  const isHttps =
+    req?.secure ||
+    req?.headers?.['x-forwarded-proto'] === 'https' ||
+    process.env.NODE_ENV === 'production' ||
+    process.env.COOKIE_SECURE === 'true';
+
+  const configuredSameSite = process.env.COOKIE_SAMESITE?.toLowerCase();
+  let sameSite = isHttps ? 'None' : 'Lax';
+  if (configuredSameSite === 'none') sameSite = 'None';
+  if (configuredSameSite === 'lax') sameSite = 'Lax';
+  if (configuredSameSite === 'strict') sameSite = 'Strict';
+
+  // Browsers strictly reject SameSite=None if Secure is false
+  const secure = sameSite === 'None' ? true : isHttps;
+
+  const cookiePath = process.env.COOKIE_PATH || '/api/auth';
+
+  const options = {
     httpOnly: true,
-    secure: isProd,
-    sameSite: isProd ? 'None' : 'Lax',
-    path: '/api/auth',
-    expires: expiresAt,
+    secure,
+    sameSite,
+    path: cookiePath,
   };
+
+  if (expiresAt) {
+    options.expires = expiresAt;
+  }
+
+  if (process.env.COOKIE_DOMAIN) {
+    options.domain = process.env.COOKIE_DOMAIN;
+  }
+
+  return options;
 };
 
 /**
  * Attach refresh token cookie to response
  */
-const attachRefreshCookie = (res, rawToken, expiresAt) => {
+const attachRefreshCookie = (res, rawToken, expiresAt, req = null) => {
   res.cookie(
     REFRESH_TOKEN_COOKIE_NAME,
     rawToken,
-    getRefreshCookieOptions(expiresAt)
+    getRefreshCookieOptions(expiresAt, req)
   );
 };
 
 /**
- * Clear refresh token cookie from response
+ * Clear refresh token cookie from response with matching options
  */
-const clearRefreshCookie = (res) => {
-  const isProd = process.env.NODE_ENV === 'production';
-  res.clearCookie(REFRESH_TOKEN_COOKIE_NAME, {
-    httpOnly: true,
-    secure: isProd,
-    sameSite: isProd ? 'None' : 'Lax',
-    path: '/api/auth',
-  });
+const clearRefreshCookie = (res, req = null) => {
+  const options = getRefreshCookieOptions(null, req);
+  delete options.expires;
+  res.clearCookie(REFRESH_TOKEN_COOKIE_NAME, options);
 };
 
 /**
@@ -79,7 +100,7 @@ export const register = asyncHandler(async (req, res) => {
     userAgent: req.headers['user-agent'] || null,
     ip: req.ip || null,
   });
-  attachRefreshCookie(res, rawToken, expiresAt);
+  attachRefreshCookie(res, rawToken, expiresAt, req);
 
   // Preserve exact legacy response shape with `token`
   res.status(201).json({
@@ -112,7 +133,7 @@ export const login = asyncHandler(async (req, res) => {
     userAgent: req.headers['user-agent'] || null,
     ip: req.ip || null,
   });
-  attachRefreshCookie(res, rawToken, expiresAt);
+  attachRefreshCookie(res, rawToken, expiresAt, req);
 
   // Preserve exact legacy response shape with `token`
   res.status(200).json({
@@ -130,19 +151,20 @@ export const login = asyncHandler(async (req, res) => {
 export const refresh = asyncHandler(async (req, res) => {
   // Enforce exact trusted origin check on browser requests
   const origin = req.headers['origin'];
+  const normalizedOrigin = origin ? origin.trim().replace(/\/+$/, '') : null;
   const originSetting = process.env.CORS_ORIGIN;
   const allowedOrigins = originSetting
-    ? originSetting.split(',').map((o) => o.trim()).filter(Boolean)
+    ? originSetting.split(',').map((o) => o.trim().replace(/\/+$/, '')).filter(Boolean)
     : ['http://localhost:5173', 'http://localhost:3000'];
 
   const customHeader = req.headers['x-requested-with'] || req.headers['x-documind-client'];
   const secFetchSite = req.headers['sec-fetch-site']; // Modern browsers send this (same-origin, cross-site, none)
   const isBrowserRequest = !!origin || !!secFetchSite;
 
-  if (origin) {
+  if (normalizedOrigin) {
     const isAllowed =
-      allowedOrigins.includes(origin) ||
-      (process.env.NODE_ENV !== 'production' && (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')));
+      allowedOrigins.includes(normalizedOrigin) ||
+      (process.env.NODE_ENV !== 'production' && (normalizedOrigin.startsWith('http://localhost:') || normalizedOrigin.startsWith('http://127.0.0.1:')));
 
     if (!isAllowed) {
       return res.status(403).json({
@@ -191,7 +213,7 @@ export const refresh = asyncHandler(async (req, res) => {
 
     // If a new refresh token was issued (not just handled in race grace window), attach new cookie
     if (rotationResult.rawRefreshToken) {
-      attachRefreshCookie(res, rotationResult.rawRefreshToken, rotationResult.expiresAt);
+      attachRefreshCookie(res, rotationResult.rawRefreshToken, rotationResult.expiresAt, req);
     }
 
     // Return new access token
@@ -202,7 +224,7 @@ export const refresh = asyncHandler(async (req, res) => {
     });
   } catch (err) {
     // If refresh fails due to revocation, expiry, or invalid token, clear the cookie
-    clearRefreshCookie(res);
+    clearRefreshCookie(res, req);
     return res.status(err.statusCode || 401).json({
       success: false,
       error: err.message || 'Not authorized, invalid or expired refresh token.',
@@ -221,7 +243,7 @@ export const logout = asyncHandler(async (req, res) => {
     await revokeRefreshTokenSession(rawToken);
   }
 
-  clearRefreshCookie(res);
+  clearRefreshCookie(res, req);
 
   res.status(200).json({
     success: true,

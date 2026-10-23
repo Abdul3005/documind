@@ -37,7 +37,7 @@ export const createDocumentRecord = async (file, userId, options = {}) => {
   try {
     // 2. Perform PDF parsing or Image OCR extraction from file on disk
     console.log(`[Document Service] Extracting text for document ${document._id} (${file.originalname}) for user ${userId}...`);
-    const { extractedText, extractionMethod } = await extractText(file.path, fileType);
+    const { extractedText, extractionMethod, rawOcrText, ocrQuality, ocrConfidence } = await extractText(file.path, fileType);
 
     // 3. Chunk text and generate embeddings for RAG pipeline
     if (extractedText && extractedText.trim().length > 0) {
@@ -78,6 +78,9 @@ export const createDocumentRecord = async (file, userId, options = {}) => {
     // 4. Update document record with extracted text, RAG chunks, extraction method, and status 'ready'
     document.extractedText = extractedText;
     document.extractionMethod = extractionMethod || (fileType === 'image' ? 'ocr' : 'text');
+    if (rawOcrText) document.rawOcrText = rawOcrText;
+    if (ocrQuality) document.ocrQuality = ocrQuality;
+    if (ocrConfidence !== undefined && ocrConfidence !== null) document.ocrConfidence = ocrConfidence;
     document.embeddingModel = 'gemini-embedding-001';
     document.migrationMarker = 'gemini-embedding-001-v1';
     document.migratedAt = new Date();
