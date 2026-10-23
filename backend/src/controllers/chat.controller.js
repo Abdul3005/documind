@@ -3,7 +3,7 @@ import Message from '../models/Message.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { generateAnswer, generateSummary, generateOverviewAnswer, UNGROUNDED_RESPONSE } from '../services/ai.service.js';
 import { retrieveRelevantChunks } from '../services/retrieval.service.js';
-import { rewriteQuery, hybridSearch } from '../services/advancedRetrieval.service.js';
+import { rewriteQuery, hybridSearch, calculateTextScore } from '../services/advancedRetrieval.service.js';
 import { rerankChunks } from '../services/reranker.service.js';
 
 /**
@@ -181,21 +181,55 @@ export const sendMessage = asyncHandler(async (req, res) => {
         });
       } catch (baselineErr) {
         console.warn('[Chat Controller Warning] Baseline vector retrieval also failed (embedding provider down/denied):', baselineErr.message);
-        // Fallback: If document has text, match keyword lines from extracted text to build grounded context
+        // Fallback: Build grounded context from document chunks or extracted text using term scoring
         retrievedChunks = [];
-        if (document.extractedText && document.extractedText.trim()) {
+        const qTerms = content
+          .toLowerCase()
+          .replace(/[^\w\s]/g, '')
+          .split(/\s+/)
+          .filter((w) => w.length > 2);
+
+        if (Array.isArray(document.chunks) && document.chunks.length > 0) {
+          const scored = document.chunks
+            .map((chunk) => {
+              const textScore = calculateTextScore(chunk.text, content, qTerms);
+              return {
+                chunkIndex: chunk.index,
+                text: chunk.text,
+                similarity: textScore,
+              };
+            })
+            .filter((c) => c.similarity > 0)
+            .sort((a, b) => b.similarity - a.similarity);
+
+          if (scored.length > 0) {
+            retrievedChunks = scored.slice(0, 3);
+          }
+        }
+
+        if (retrievedChunks.length === 0 && document.extractedText && document.extractedText.trim()) {
           const docText = document.extractedText.trim();
-          const qTerms = content
-            .toLowerCase()
-            .replace(/[^\w\s]/g, '')
-            .split(/\s+/)
-            .filter((w) => w.length > 2);
-          const hasMatch = qTerms.some((t) => docText.toLowerCase().includes(t));
-          if (hasMatch) {
+          const lowerDoc = docText.toLowerCase();
+          let bestIndex = -1;
+          let maxMatches = 0;
+          for (const term of qTerms) {
+            const idx = lowerDoc.indexOf(term);
+            if (idx !== -1) {
+              const count = qTerms.filter((t) => lowerDoc.includes(t)).length;
+              if (count > maxMatches) {
+                maxMatches = count;
+                bestIndex = idx;
+              }
+            }
+          }
+
+          if (bestIndex !== -1) {
+            const start = Math.max(0, bestIndex - 200);
+            const end = Math.min(docText.length, bestIndex + 1200);
             retrievedChunks = [
               {
                 chunkIndex: 0,
-                text: docText.substring(0, 1000),
+                text: docText.substring(start, end),
                 similarity: 0.8,
               },
             ];

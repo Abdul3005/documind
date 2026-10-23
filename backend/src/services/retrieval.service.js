@@ -1,5 +1,5 @@
 import Document from '../models/Document.js';
-import { generateEmbedding } from './embedding.service.js';
+import { generateEmbedding, generateMockVector } from './embedding.service.js';
 
 /**
  * Calculates Cosine Similarity between two numerical vector arrays.
@@ -60,7 +60,13 @@ export const retrieveRelevantChunks = async ({
   }
 
   // 2. Generate embedding vector for the query
-  const queryEmbedding = await generateEmbedding(question.trim());
+  let queryEmbedding;
+  try {
+    queryEmbedding = await generateEmbedding(question.trim());
+  } catch (embErr) {
+    console.warn('[Retrieval Service] Query embedding generation failed, using mock vector fallback:', embErr.message);
+    queryEmbedding = generateMockVector(question.trim());
+  }
 
   // 3. Exact In-Memory Cosine Similarity Ranking across document chunks
   const scoredChunks = document.chunks

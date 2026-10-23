@@ -549,4 +549,97 @@ describe('Phase 4: RAG Architecture & Vector Search Pipeline', () => {
       }, 30000);
     });
   });
+
+  describe('9. Regression Fix Verification: Multi-Page Resume & Deep Chunk Grounding', () => {
+      it('should retrieve and ground answer for CareerLens Pakistan positioned deep in a multi-page resume (>1500 chars)', async () => {
+        const resumeHeader = 'Abdul Rehman\nFull Stack AI Engineer | Faisalabad, Pakistan | abdulrehman@example.com\n' +
+          'Summary: Dedicated and results-driven software engineer specializing in full-stack web development, scalable cloud applications, distributed microservices, and Retrieval-Augmented Generation architectures.\n\n' +
+          'Education:\nBachelor of Science in Computer Science, FAST National University of Computer and Emerging Sciences (2020-2024)\n' +
+          'Cumulative GPA: 3.75/4.00, Dean Honour List recipient for academic excellence.\n' +
+          'Key Coursework: Data Structures and Algorithms, Object-Oriented Analysis and Design, Distributed Systems, Machine Learning, Database Management Systems, Cloud Computing, Computer Networks, Operating Systems, Linear Algebra, Multivariable Calculus.\n\n' +
+          'Technical Skills:\n' +
+          'Programming Languages: JavaScript (ES6+), TypeScript, Python 3, C++, SQL, Go\n' +
+          'Frameworks & Libraries: React.js, Express.js, Node.js, FastAPI, Next.js, Redux Toolkit, Tailwind CSS, Material UI\n' +
+          'Databases & Caches: MongoDB Atlas, PostgreSQL, Redis, Pinecone, Milvus\n' +
+          'Cloud & DevOps: Docker, Docker Compose, Kubernetes, Git, GitHub Actions, AWS (EC2, S3), Render, Vercel\n\n' +
+          'Professional Experience:\n' +
+          'Software Engineer Intern at TechCorp Global (June 2023 - August 2023)\n' +
+          '- Architected scalable microservices using Node.js and Express, serving over 50,000 daily active users\n' +
+          '- Optimized complex MongoDB aggregation queries and indexed critical collections, improving API response latency by 35%\n' +
+          '- Collaborated in an agile scrum team to deliver feature sprint releases on schedule with 95% test coverage\n\n' +
+          'Academic & Open-Source Projects:\n' +
+          'Distributed File Storage Engine in C++\n' +
+          '- Implemented Raft distributed consensus protocol for high-availability leader elections and log replication\n' +
+          '- Handled network partitions, concurrent socket connections, and crash recovery with zero data corruption\n\n';
+
+        const resumeCareerLensSection = 'CareerLens Pakistan — Career & Salary Intelligence Platform React.js, FastAPI, Python, Recharts, Tailwind CSS\n' +
+          'ML-based salary prediction and job-type classification for the Pakistani job market.\n' +
+          'FastAPI REST API with 11 analytics endpoints; interactive Recharts data visualization.\n\n' +
+          'DocuMind V2 — AI-Powered Intelligent Document Assistant\n' +
+          'Multi-format document ingestion, OCR, hybrid search with vector and lexical retrieval.\n';
+
+        const fullResumeText = resumeHeader + resumeCareerLensSection;
+        expect(fullResumeText.indexOf('CareerLens Pakistan')).toBeGreaterThan(1500);
+
+        const resumeDoc = await Document.create({
+          userId: userAId,
+          filename: 'Abdul_Rehman_Resume.pdf',
+          fileType: 'pdf',
+          extractedText: fullResumeText,
+          status: 'ready',
+          chunks: [
+            {
+              index: 0,
+              text: resumeHeader,
+              offsetStart: 0,
+              offsetEnd: resumeHeader.length,
+              embedding: new Array(768).fill(0.01),
+            },
+            {
+              index: 1,
+              text: resumeCareerLensSection,
+              offsetStart: resumeHeader.length,
+              offsetEnd: fullResumeText.length,
+              embedding: new Array(768).fill(0.05),
+            },
+          ],
+        });
+
+        // Test 1: Standard query answering under normal conditions
+        const res = await request(app)
+          .post(`/api/documents/${resumeDoc._id}/messages`)
+          .set('Authorization', `Bearer ${tokenA}`)
+          .send({ content: 'What is CareerLens Pakistan?' });
+
+        expect(res.status).toBe(201);
+        expect(res.body.success).toBe(true);
+        expect(res.body.assistantMessage).toBeDefined();
+        expect(res.body.assistantMessage.content).not.toBe(UNGROUNDED_RESPONSE);
+        expect(res.body.assistantMessage.content.toLowerCase()).toMatch(/careerlens|salary|platform|pakistan/);
+        expect(Array.isArray(res.body.assistantMessage.sources)).toBe(true);
+        expect(res.body.assistantMessage.sources.length).toBeGreaterThan(0);
+        const chunkIndices = res.body.assistantMessage.sources.map((s) => s.chunkIndex);
+        expect(chunkIndices).toContain(1);
+
+        // Test 2: Fallback retrieval when external embedding provider fails in production mode
+        const origKey = process.env.LLM_API_KEY;
+        const origEnv = process.env.NODE_ENV;
+        process.env.NODE_ENV = 'production';
+        process.env.LLM_API_KEY = 'invalid_real_api_key_123';
+
+        const failoverRes = await request(app)
+          .post(`/api/documents/${resumeDoc._id}/messages`)
+          .set('Authorization', `Bearer ${tokenA}`)
+          .send({ content: 'What is CareerLens Pakistan?' });
+
+        process.env.NODE_ENV = origEnv;
+        process.env.LLM_API_KEY = origKey;
+
+        expect(failoverRes.status).toBe(201);
+        expect(failoverRes.body.success).toBe(true);
+        expect(failoverRes.body.assistantMessage.content).not.toBe(UNGROUNDED_RESPONSE);
+        expect(failoverRes.body.assistantMessage.content.toLowerCase()).toMatch(/careerlens|salary|platform|pakistan/);
+      }, 30000);
+    });
 });
+

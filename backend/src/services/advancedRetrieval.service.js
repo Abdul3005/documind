@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 import Document from '../models/Document.js';
-import { generateEmbedding } from './embedding.service.js';
+import { generateEmbedding, generateMockVector } from './embedding.service.js';
 import { cosineSimilarity } from './retrieval.service.js';
 
 /**
@@ -227,7 +227,13 @@ export const hybridSearch = async ({
   const queryTerms = extractSearchTerms(searchQuery);
 
   // 2. Generate Query Vector Embedding (768 dimensions)
-  const queryEmbedding = await generateEmbedding(searchQuery);
+  let queryEmbedding;
+  try {
+    queryEmbedding = await generateEmbedding(searchQuery);
+  } catch (embErr) {
+    console.warn('[Advanced Retrieval] Query embedding generation failed, using mock vector fallback:', embErr.message);
+    queryEmbedding = generateMockVector(searchQuery);
+  }
 
   // 3. Document Query Scoping
   const filter = { userId };
@@ -292,15 +298,15 @@ export const hybridSearch = async ({
     for (const doc of documents) {
       if (Array.isArray(doc.chunks)) {
         for (const chunk of doc.chunks) {
-          if (Array.isArray(chunk.embedding) && chunk.embedding.length > 0) {
-            const vectorSim = cosineSimilarity(queryEmbedding, chunk.embedding);
+          const hasEmbedding = Array.isArray(chunk.embedding) && chunk.embedding.length > 0 && Array.isArray(queryEmbedding) && queryEmbedding.length > 0;
+
+            const vectorSim = hasEmbedding ? cosineSimilarity(queryEmbedding, chunk.embedding) : 0;
             candidates.push({
               documentId: doc._id.toString(),
               chunkIndex: chunk.index,
               text: chunk.text,
               vectorScore: Math.max(0, Number(vectorSim.toFixed(4))),
             });
-          }
         }
       }
     }

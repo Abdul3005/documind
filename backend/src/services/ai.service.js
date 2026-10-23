@@ -196,9 +196,16 @@ export const generateMockDevResponse = (
 
   if (matches.length > 0) {
     const lines = safeDoc.split('\n').filter((l) => l.trim().length > 0);
-    const matchingLine =
-      lines.find((line) => words.some((w) => line.toLowerCase().includes(w))) ||
-      lines[0];
+    const scoredLines = lines
+      .map((line) => {
+        const lowerLine = line.toLowerCase();
+        const score = words.reduce((acc, w) => acc + (lowerLine.includes(w) ? 1 : 0), 0);
+        return { line, score };
+      })
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score);
+
+    const matchingLine = scoredLines.length > 0 ? scoredLines[0].line : lines[0];
     return `Based on the document provided: ${matchingLine.trim()}`;
   }
 
@@ -270,6 +277,19 @@ export const formatMessagesForLLM = (prompt) => {
 
   const contextMarker = '<<<CONTEXT>>>';
   const docMarker = '<<<DOCUMENT>>>';
+
+  if (prompt.includes('search query optimizer') || prompt.includes('Optimized Search Query:')) {
+    return [
+      {
+        role: 'system',
+        content: 'You are a search query optimizer for a document retrieval system. Given the query and context, output only the self-contained search query string.',
+      },
+      {
+        role: 'user',
+        content: prompt,
+      },
+    ];
+  }
 
   if (prompt.includes(contextMarker)) {
     const parts = prompt.split(contextMarker);
